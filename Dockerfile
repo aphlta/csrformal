@@ -6,6 +6,8 @@ FROM python:3.12-slim
 
 WORKDIR /opt/csrformal
 
+# 不装 gh：解析分支名 / demo-spec-drift.sh 对照 main 时请在宿主机跑，
+# 或给脚本传 40 位 sha。装 gh 会把镜像撑大，层 1 检查（lint 钉死 sha）只用 curl。
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \

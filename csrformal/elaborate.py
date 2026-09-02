@@ -18,6 +18,8 @@ cp.txt 里的 classpath 已经指向 XiangShan-b90dbba 编译好的 out/*。
 从而得出「性质很强」的错误结论。所以必须硬校验退出码 **和** 产出的
 .class 数量，两者缺一不可。
 """
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -36,6 +38,101 @@ FIRTOOL_OPTS = [
 ]
 
 
+# 模块名 → 相对 XS_TREE 的关键 .scala。换树 / 换提交必须让 SV 缓存失效，
+# 否则报告会写新 XS_COMMIT 却复用旧网表。
+_KEY_SCALA = {
+    "CSRPermitModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSRPermitModule.scala",
+    "TrapHandleModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/TrapHandleModule.scala",
+    "TrapEntryMEventModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSREvents/TrapEntryMEvent.scala",
+    "TrapEntryHSEventModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSREvents/TrapEntryHSEvent.scala",
+    "TrapEntryVSEventModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSREvents/TrapEntryVSEvent.scala",
+    "TrapEntryDEventModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSREvents/TrapEntryDEvent.scala",
+    "TrapEntryMNEventModule":
+        "src/main/scala/xiangshan/backend/fu/NewCSR/CSREvents/TrapEntryMNEvent.scala",
+}
+
+
+def _git_head(tree: str) -> str:
+    if not tree or not os.path.isdir(tree):
+        return ""
+    r = subprocess.run(["git", "-C", tree, "rev-parse", "HEAD"],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _file_fp(path: str) -> bytes:
+    """路径 + mtime + size + 内容哈希。文件不存在也编进键，避免空树撞车。"""
+    if not os.path.isfile(path):
+        return b"missing:" + path.encode()
+    st = os.stat(path)
+    h = hashlib.sha256()
+    h.update(f"{st.st_mtime_ns}:{st.st_size}:".encode())
+    with open(path, "rb") as f:
+        h.update(f.read())
+    return h.digest()
+
+
+def key_scala_paths(module: str) -> List[str]:
+    rel = _KEY_SCALA.get(module)
+    if not rel or not config.XS_TREE:
+        return []
+    return [os.path.join(config.XS_TREE, rel)]
+
+
+def rtl_identity(module: str, overrides: Optional[List[str]] = None,
+                 source_files: Optional[List[str]] = None) -> str:
+    """RTL 树身份：路径、XS_COMMIT、git HEAD、关键/覆盖源文件。
+
+    只按模块名缓存会在换 CSRFORMAL_XS_TREE / 换 commit / 换变异体源时
+    静默复用旧 SV。12 位 hex 够分目录，也方便对照报告。
+    """
+    h = hashlib.sha256()
+    tree = os.path.realpath(config.XS_TREE) if config.XS_TREE else ""
+    h.update(b"tree:" + tree.encode())
+    h.update(b"\0commit:" + (config.XS_COMMIT or "").encode())
+    h.update(b"\0git:" + _git_head(config.XS_TREE).encode())
+    h.update(b"\0module:" + module.encode())
+    files = list(source_files or [])
+    files.extend(key_scala_paths(module))
+    if overrides:
+        files.extend(overrides)
+    for p in sorted(set(files)):
+        real = os.path.realpath(p) if os.path.exists(p) else p
+        h.update(b"\0file:" + real.encode())
+        h.update(_file_fp(p))
+    return h.hexdigest()[:12]
+
+
+def cache_dir(tag: str, module: str, overrides: Optional[List[str]] = None,
+              source_files: Optional[List[str]] = None) -> str:
+    """out/<tag>/<rtl_id>/ —— 换树换源自动换目录，不靠 --rebuild。"""
+    return os.path.join(config.OUT_DIR, tag,
+                        rtl_identity(module, overrides, source_files))
+
+
+def cache_hit(module: str, tag: str, overrides: Optional[List[str]] = None,
+              source_files: Optional[List[str]] = None,
+              force: bool = False) -> Optional[str]:
+    """命中带身份戳的 SV 缓存则返回路径，否则 None。"""
+    if force:
+        return None
+    key = rtl_identity(module, overrides, source_files)
+    d = os.path.join(config.OUT_DIR, tag, key)
+    sv = os.path.join(d, "m.sv")
+    stamp = os.path.join(d, ".rtl_id")
+    if os.path.exists(sv) and os.path.exists(stamp):
+        with open(stamp, encoding="utf-8") as f:
+            if f.read().strip() == key:
+                return sv
+    return None
+
+
 def _run(cmd: List[str], log: Optional[str] = None, cwd: Optional[str] = None):
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     if log:
@@ -45,8 +142,11 @@ def _run(cmd: List[str], log: Optional[str] = None, cwd: Optional[str] = None):
 
 
 def build_harness_classes(force: bool = False) -> str:
-    """编译 csrformal 自带的 Elab2 harness（只需一次）。"""
-    dest = config.HARNESS_CLASSES
+    """编译 csrformal 自带的 Elab2 harness（只需一次）。
+
+    harness 编过 XS classpath，换树不能复用旧 class。
+    """
+    dest = os.path.join(config.HARNESS_CLASSES, rtl_identity("harness"))
     stamp = os.path.join(dest, ".ok")
     if os.path.exists(stamp) and not force:
         return dest
@@ -62,20 +162,26 @@ def build_harness_classes(force: bool = False) -> str:
     if r.returncode != 0 or n == 0:
         raise SystemExit(f"harness 编译失败 (rc={r.returncode}, classes={n})，"
                          f"见 {config.OUT_DIR}/harness-compile.log")
-    open(stamp, "w").write(str(n))
+    with open(stamp, "w") as f:
+        f.write(str(n))
     return dest
 
 
 def elaborate(module: str, tag: str, overrides: Optional[List[str]] = None,
               force: bool = False, verbose: bool = True) -> str:
-    """精化 `module`，产出 out/<tag>/m.sv 并返回其路径。
+    """精化 `module`，产出 out/<tag>/<rtl_id>/m.sv 并返回其路径。
 
     overrides: 需要覆盖编译的 .scala 绝对路径列表（变异测试用）。
+    缓存键含树路径 / commit / 关键源文件，换树不 --rebuild 也不会复用旧 SV。
     """
-    d = os.path.join(config.OUT_DIR, tag)
+    hit = cache_hit(module, tag, overrides, force=force)
+    if hit:
+        if verbose:
+            print(f"    缓存命中 {hit} (rtl_id={os.path.basename(os.path.dirname(hit))})",
+                  flush=True)
+        return hit
+    d = cache_dir(tag, module, overrides)
     sv = os.path.join(d, "m.sv")
-    if os.path.exists(sv) and not force:
-        return sv
     os.makedirs(d, exist_ok=True)
 
     harness = build_harness_classes()
@@ -114,7 +220,21 @@ def elaborate(module: str, tag: str, overrides: Optional[List[str]] = None,
              log=os.path.join(d, "firtool.log"))
     if r.returncode != 0 or not os.path.exists(sv):
         raise SystemExit(f"firtool 失败，见 {d}/firtool.log")
+    key = rtl_identity(module, overrides)
+    with open(os.path.join(d, ".rtl_id"), "w", encoding="utf-8") as f:
+        f.write(key + "\n")
+    # 给人看：这份 SV 是哪棵树精化出来的，避免报告写新 commit、磁盘却是旧网表。
+    with open(os.path.join(d, ".rtl_meta.json"), "w", encoding="utf-8") as f:
+        json.dump({
+            "rtl_id": key,
+            "xs_tree": config.XS_TREE,
+            "xs_commit": config.XS_COMMIT,
+            "git_head": _git_head(config.XS_TREE),
+            "module": module,
+            "tag": tag,
+            "overrides": list(overrides or []),
+        }, f, ensure_ascii=False, indent=2)
     if verbose:
         with open(sv) as f:
-            print(f"    {sv} ({sum(1 for _ in f)} 行)", flush=True)
+            print(f"    {sv} ({sum(1 for _ in f)} 行, rtl_id={key})", flush=True)
     return sv

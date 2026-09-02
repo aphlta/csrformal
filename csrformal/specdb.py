@@ -15,13 +15,16 @@
 
 asciidoc 里的两种锚点
 --------------------
-1) 行内锚点  ``[#norm:xxx]#规则正文…#``   —— 正文就在紧跟的一对 ``#`` 之间，
-   可以跨行，以下一个未转义的 ``#`` 结束。
+1) 行内锚点  ``[#norm:xxx]#规则正文…#``   —— 正文在紧跟的一对 ``#`` 之间，
+   可以跨行。闭合是「未转义且后面不是单词字符」的 ``#``；正文里的
+   ``#0x14D`` 必须保留，不能用第一个 ``find("#")`` 静默截断（否则 drift 漏报）。
+   含 ``#`` 却找不到合法闭合时直接失败。
 2) 块锚点    ``[[norm:xxx]]`` 独占一行 —— 规则正文是紧随其后的整个段落
    （到下一个空行 / 下一个锚点 / 下一个块指令为止）。
 
 两种都要支持：hypervisor.adoc 的 hcounteren 用的是块锚点，
 machine.adoc 的 menvcfg 用的是行内锚点。
+含 ``#`` 的正文必须整段提取，否则 spec-drift 会漏报。
 """
 import hashlib
 import json
@@ -36,6 +39,32 @@ from . import config
 
 INLINE_RE = re.compile(r"\[#(norm:[A-Za-z0-9_]+)\]#")
 BLOCK_RE = re.compile(r"^\[\[(norm:[A-Za-z0-9_]+)\]\]\s*$")
+
+
+def _inline_close(src: str, start: int):
+    """找 asciidoc 行内锚点 `[#id]#body#` 的闭合 `#`。
+
+    不能用第一个 `src.find("#")`：规则正文里的 `#0x14D` / `privilege #3`
+    会被静默截断，drift 比对只看到半句，后半段改了也漏报。
+
+    闭合条件：未转义的 `#`，且后面不是单词字符（那是正文里的字面 #）。
+    返回 (closer_index, saw_interior_hash)。找不到闭合时 closer 为 -1。
+    """
+    i = start
+    saw_interior = False
+    while i < len(src):
+        if src[i] == "\\" and i + 1 < len(src) and src[i + 1] == "#":
+            i += 2
+            continue
+        if src[i] == "#":
+            nxt = src[i + 1] if i + 1 < len(src) else ""
+            if nxt.isalnum() or nxt == "_":
+                saw_interior = True
+                i += 1
+                continue
+            return i, saw_interior
+        i += 1
+    return -1, saw_interior
 
 
 def normalize(text: str) -> str:
@@ -89,8 +118,14 @@ def extract_rules_from_text(src: str, relpath: str) -> Dict[str, Rule]:
     for m in INLINE_RE.finditer(src):
         rid = m.group(1)
         start = m.end()
-        end = src.find("#", start)
+        end, interior = _inline_close(src, start)
         if end < 0:
+            # 正文含 # 却找不到合法闭合：拒绝静默截断（否则 drift 漏报）。
+            if interior:
+                raise ValueError(
+                    f"{relpath}:{line_of(m.start())}: 行内锚点 {rid} 的正文含 #，"
+                    f"但找不到合法闭合，拒绝截断"
+                )
             continue
         rules[rid] = Rule(rid, relpath, line_of(m.start()), src[start:end], "inline")
 

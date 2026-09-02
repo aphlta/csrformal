@@ -21,7 +21,6 @@
 
 实测把 CSRPermitModule 全套从「分钟级 × N」压到单进程十几秒。
 """
-import fcntl
 import os
 import re
 import subprocess
@@ -31,7 +30,25 @@ from typing import Dict, List, Optional, Tuple
 
 from . import config
 
+try:
+    import fcntl
+except ImportError:  # Windows / 非 POSIX。本工具不移植，只给一句可读错误。
+    fcntl = None
+
 PORT_RE = re.compile(r";\s*yosys-smt2-(input|output|register|wire)\s+(\S+)\s+(\d+)")
+
+
+def yosys_bin() -> str:
+    """运行时再读 CSRFORMAL_YOSYS，测试才能在 import 之后覆盖，且与 config 一致。"""
+    return os.environ.get("CSRFORMAL_YOSYS") or config.YOSYS
+
+
+def _require_fcntl():
+    if fcntl is None:
+        raise SystemExit(
+            "csrformal 仅支持 Linux（需要 fcntl 文件锁）。"
+            "不要在 Windows 上跑；请用 Linux 主机或 Docker。"
+        )
 
 
 def _cache_fresh(sv_path: str, out_path: str) -> bool:
@@ -54,6 +71,7 @@ def sv_to_smt2(sv_path: str, top: str, out_path: str, force: bool = False) -> st
 
     out_dir = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(out_dir, exist_ok=True)
+    _require_fcntl()
     with open(out_path + ".lock", "w") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         # 等锁期间别的进程可能已经生成好了，重新检查一次。
@@ -65,7 +83,7 @@ def sv_to_smt2(sv_path: str, top: str, out_path: str, force: bool = False) -> st
         try:
             script = (f"read_verilog -sv {sv_path}; prep -top {top} -flatten; "
                       f"memory_map; write_smt2 {tmp}")
-            r = subprocess.run([config.YOSYS, "-q", "-p", script],
+            r = subprocess.run([yosys_bin(), "-q", "-p", script],
                                capture_output=True, text=True)
             if r.returncode != 0:
                 raise SystemExit("yosys 失败:\n" + r.stdout + r.stderr)

@@ -41,15 +41,19 @@ with open(out, "w") as f:
 
 
 def to_smt2_old(sv_path, top, out_path, force=False):
-    """修复前的实现，逐字保留，用作阳性对照。"""
-    from csrformal import config
+    """修复前的实现，逐字保留，用作阳性对照。
+
+    yosys 路径走与现行代码相同的 CSRFORMAL_YOSYS 覆盖，否则 stub 进不去，
+    「old 必现竞态」对照本身会失效。
+    """
+    from csrformal import smt
     if os.path.exists(out_path) and not force and \
             os.path.getmtime(out_path) > os.path.getmtime(sv_path):
         return out_path
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     script = (f"read_verilog -sv {sv_path}; prep -top {top} -flatten; "
               f"memory_map; write_smt2 {out_path}")
-    r = subprocess.run([config.YOSYS, "-q", "-p", script],
+    r = subprocess.run([smt.yosys_bin(), "-q", "-p", script],
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit("yosys 失败:\n" + r.stdout + r.stderr)
@@ -86,11 +90,19 @@ def run(impl, nproc=16):
     with open(sv, "w") as f:
         f.write("module Dummy(); endmodule\n")
 
-    # config.YOSYS 在 import 时定型，这里通过环境变量覆盖（config 读 env）
-    os.environ["YOSYS"] = stub
+    # 覆盖必须走 CSRFORMAL_YOSYS（与 config.py 一致）。旧名 YOSYS 无效。
+    # 故意不写 config.YOSYS：sv_to_smt2 必须运行时读环境变量，import 之后也能覆盖。
+    os.environ["CSRFORMAL_YOSYS"] = stub
+    os.environ.pop("YOSYS", None)
     os.environ["MARKER_DIR"] = marker
-    from csrformal import config
-    config.YOSYS = stub
+    from csrformal import config, smt
+    used = smt.yosys_bin()
+    if used != stub:
+        shutil.rmtree(work, ignore_errors=True)
+        raise SystemExit(
+            f"CSRFORMAL_YOSYS 未覆盖 yosys：yosys_bin()={used!r} "
+            f"config.YOSYS={config.YOSYS!r} stub={stub!r}"
+        )
 
     with mp.Pool(nproc) as pool:
         res = pool.map(_worker, [(impl, sv, os.path.join(work, "m.smt2"), i)

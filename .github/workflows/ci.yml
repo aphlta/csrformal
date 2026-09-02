@@ -28,3 +28,9 @@ jobs:
       - name: Spec self-check (no RTL)
         # permit() ↔ permit_smt()，不读 cp.txt、不调 firtool/yosys。
         run: ./bin/csrformal spec-selfcheck
+      - name: Unit tests (no XiangShan tree)
+        # UNKNOWN 门禁、空 --review、缓存键、行内锚点 #、CSRFORMAL_YOSYS。
+        run: python3 -m unittest discover -s tests -v
+      - name: SMT2 cache race
+        # 不精化；用 stub yosys 验证文件锁。覆盖走 CSRFORMAL_YOSYS。
+        run: python3 test_smt2_race.py new

@@ -19,15 +19,24 @@ import time
 
 from . import config, elaborate, modules, report, runner, specdb
 
+# check 门禁：这四种都是失败。UNKNOWN 不是「暂时放过」，
+# 否则求解器超时/给不出结论会被 CI 当成全绿。
+CHECK_FAIL = (runner.VIOLATED, runner.VACUOUS, runner.UNKNOWN, runner.ERROR)
+# 变异对照只认明确结论。UNKNOWN/VACUOUS/ERROR 既不是 FIXED 也不是 KILLED。
+SELFTEST_CONCLUSIVE = (runner.HOLDS, runner.VIOLATED)
 
-def _smt2_path(tag: str) -> str:
-    return os.path.join(config.OUT_DIR, tag, "c.smt2")
+
+def _smt2_beside(sv: str) -> str:
+    """SMT2 必须和这次精化的 SV 在同一目录，才能跟 RTL 身份缓存键对齐。"""
+    return os.path.join(os.path.dirname(sv), "c.smt2")
 
 
 def _select(props, only, pids=None):
     """--pids 走精确匹配，是给 spec-drift 的产物直接喂进来用的；
     --only 走子串匹配，是给人手工调试用的。"""
-    if pids:
+    if pids is not None:
+        # 空列表也是「精确匹配 0 条」，不能当成「不过滤」——
+        # 否则 --review 空 JSON 会跑完全部性质并静默当通过。
         want = set(pids)
         return [p for p in props if p.pid in want]
     if not only:
@@ -36,6 +45,38 @@ def _select(props, only, pids=None):
     if not sel:
         raise SystemExit(f"--only {only!r} 没有匹配到任何性质；用 `csrformal list` 查看")
     return sel
+
+
+def check_failed(summary: dict) -> bool:
+    """反例 / 真空 / 未知 / 错误 → 失败。全 HOLDS 才通过。"""
+    return any(summary.get(s) for s in CHECK_FAIL)
+
+
+def selftest_ok(kind: str, statuses) -> bool:
+    """变异对照是否符合预期。
+
+    只有明确的 HOLDS / VIOLATED 才算对照成功：
+      * fix：全部 HOLDS（UNKNOWN 不得当 FIXED）
+      * defect：至少一条 VIOLATED，且没有非结论状态（UNKNOWN 不得当 KILLED）
+    """
+    if not statuses:
+        return False
+    if any(s not in SELFTEST_CONCLUSIVE for s in statuses):
+        return False
+    if kind == "fix":
+        return all(s == runner.HOLDS for s in statuses)
+    return any(s == runner.VIOLATED for s in statuses)
+
+
+def _require_linux():
+    """本工具只用 Linux 上的 fcntl 文件锁；不是 Windows 移植。"""
+    try:
+        import fcntl  # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "csrformal 仅支持 Linux（需要 fcntl 文件锁）。"
+            "不要在 Windows 上跑；请用 Linux 主机或 Docker。"
+        )
 
 
 # ------------------------------------------------------------------ check
@@ -48,17 +89,23 @@ def cmd_check(args):
         with open(args.review, encoding="utf-8") as f:
             pids = json.load(f)["affected_properties"]
         print(f"从 {args.review} 读到 {len(pids)} 条待重新审阅的性质")
-    wall0 = time.time()
-    all_results, meta_mods = [], []
+    selected = []
     for name in names:
         spec = modules.get(name)
-        props = _select(spec.props, args.only, pids)
+        selected.append((name, _select(spec.props, args.only, pids)))
+    # --review 空匹配必须失败：0 条性质跑完 summarize 全 0，会静默当通过。
+    if args.review is not None and sum(len(p) for _, p in selected) == 0:
+        print(f"--review {args.review}: 0 条性质，拒绝当作通过")
+        return 1
+    wall0 = time.time()
+    all_results, meta_mods = [], []
+    for name, props in selected:
         if not props:
             continue
         print(f"\n=== {name} ({len(props)} 条性质) ===", flush=True)
         print("  精化 …", flush=True)
         sv = elaborate.elaborate(name, f"base_{name}", force=args.rebuild)
-        r = runner.ModuleRunner(sv, name, _smt2_path(f"base_{name}"))
+        r = runner.ModuleRunner(sv, name, _smt2_beside(sv))
         all_results += r.run(props)
         meta_mods.append(name)
 
@@ -104,7 +151,7 @@ def cmd_check(args):
             } for r in all_results if r.status == runner.VIOLATED]
         }
         spike_oracle.print_votes(spike_oracle.votes_from_report(doc))
-    return 1 if (s[runner.VIOLATED] or s[runner.VACUOUS] or s[runner.ERROR]) else 0
+    return 1 if check_failed(s) else 0
 
 
 # ------------------------------------------------------------------ list / rules / lint
@@ -274,7 +321,7 @@ def cmd_self_test(args):
             src[m.module] = m.patch
             sv = elaborate.elaborate(name, f"mut_{m.mid}",
                                      overrides=list(src.values()), force=args.rebuild)
-            r = runner.ModuleRunner(sv, name, _smt2_path(f"mut_{m.mid}"))
+            r = runner.ModuleRunner(sv, name, _smt2_beside(sv))
             # 只跑「预期能杀死它的」那批性质：跑全套没有额外信息，只是慢
             keys = m.expect_fix if m.kind == "fix" else m.expect_kill
             want = [p for p in base_props
@@ -284,16 +331,18 @@ def cmd_self_test(args):
             res = r.run(want, progress=False)
             fails = [x for x in res if x.status == runner.VIOLATED]
             vac = [x for x in res if x.status == runner.VACUOUS]
+            unk = [x for x in res if x.status == runner.UNKNOWN]
+            err = [x for x in res if x.status == runner.ERROR]
+            # 修复对照 / 阳性对照都只认明确 HOLDS/VIOLATED；
+            # UNKNOWN 既不能当 FIXED，也不能当 KILLED。
+            ok = selftest_ok(m.kind, [x.status for x in res])
             if m.kind == "fix":
-                # 修复对照：要求全部转为通过（且不能靠真空蒙混过关）
-                ok = not fails and not vac
                 verdict = "FIXED ✔" if ok else "NOT FIXED ✘"
             else:
-                ok = bool(fails) and not vac
                 verdict = "KILLED ✔" if ok else "SURVIVED ✘"
             killed += ok
             print(f"  相关性质 {len(want)} 条 → 反例 {len(fails)} 条，真空 {len(vac)} 条"
-                  f"  ⇒ {verdict}")
+                  f"，未知 {len(unk)} 条，错误 {len(err)} 条  ⇒ {verdict}")
             for x in (fails[:3] if m.kind == "defect" else res[:3]):
                 print(f"     - [{x.status}] {x.prop.pid}: {x.prop.title}")
             rows.append((m.mid, name, m.kind, m.desc, len(want), len(fails), ok))
@@ -415,6 +464,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_spike_cex)
 
     args = ap.parse_args(argv)
+    _require_linux()
     os.makedirs(config.OUT_DIR, exist_ok=True)
     return args.fn(args)
 
