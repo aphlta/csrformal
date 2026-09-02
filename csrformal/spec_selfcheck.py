@@ -1,21 +1,23 @@
-"""规格自洽：permit()（Python）与 permit_smt()（z3）必须对同一输入空间判决一致。
+"""规格自洽：Python 规格函数与 SMT 公式必须对同一输入空间判决一致。
 
 为什么单独做这一步
 ------------------
-EQ 的待证公式走 permit_smt，反例解释走 permit()。两套实现，改一边漏一边
-会让「译.spec」和求解器用的规格对不上。这里不引入第三套无结构 SMT，
-复用 permit_terms / permit_as_smt / permit_smt / eq_assumes。
+EQ 的待证公式走 *_smt，反例解释走 Python 函数。两套实现，改一边漏一边
+会让「译.spec」和求解器用的规格对不上。这里不引入第三套无结构 SMT。
+
+CSRPermit：复用 permit_terms / permit_as_smt / permit_smt / eq_assumes。
+TrapEntry：复用 trap_entry_{m,hs} / trap_entry_{m,hs}_smt / eq_assumes_*。
 
 检查顺序
 --------
-1. 真空：eq_assumes 可满足，且存在一次真实访问（ren ∨ wen）。
-2. 主结论：在同一套 eq_assumes 下，permit_as_smt（由 permit() 决策体
-   编成）与 permit_smt 的 II/VI 不等价 ⇒ 应 unsat。
-3. 补充点测：已知场景 + 从假设集随机具体化，两边逐点比对。
+1. 真空：eq_assumes 可满足（permit 还要求存在一次真实访问）。
+2. 主结论：同一套 eq_assumes 下两边不等价 ⇒ 应 unsat（permit）；
+   TrapEntry 用点测 + 随机具体化对照 Python 与 SMT。
+3. 补充点测：已知场景 + 从假设集随机具体化。
 """
 from typing import Dict, List, Tuple
 
-from . import spec_permit
+from . import spec_permit, spec_trap_entry
 from .spec_permit import Enables, Stateen, permit, permit_as_smt, permit_smt
 
 # 与 CSRPermitModule 精化顶层对齐，只列 eq_assumes / permit_smt 用到的端口。
@@ -268,5 +270,136 @@ def run_selfcheck(n_random: int = 64) -> int:
         s.add(z3.Or(*block))
     print(f"{'ok' if bad == 0 else 'FAIL'}   随机点：比对 {compared} 个具体化模型")
 
+    bad += _trap_entry_selfcheck(z3, n_random)
+
     print(f"\n规格自洽：{'通过' if bad == 0 else f'失败 {bad} 处'}")
     return 1 if bad else 0
+
+
+# TrapEntry 自检用的端口，不依赖 RTL。1-bit 用 Bool，与 EQ 假设字符串一致。
+TRAP_PORT_WIDTHS: Dict[str, int] = {
+    "valid": 1,
+    "in_hasDTExcp": 1,
+    "in_privState_PRVM": 2,
+    "in_privState_V": 1,
+    "in_mstatus_MIE": 1,
+    "in_mstatus_SIE": 1,
+    "in_hstatus_SPVP": 1,
+    "in_causeNO_Interrupt": 1,
+    "in_causeNO_ExceptionCode": 63,
+}
+for _name, _w in spec_trap_entry.SSTATUS_AS_MSTATUS:
+    TRAP_PORT_WIDTHS[f"in_mstatus_{_name}"] = _w
+    TRAP_PORT_WIDTHS[f"in_sstatus_{_name}"] = _w
+
+
+def make_trap_decls(z3) -> Dict:
+    decls = {}
+    for name, w in TRAP_PORT_WIDTHS.items():
+        decls[name] = z3.Bool(name) if w == 1 else z3.BitVec(name, w)
+    return decls
+
+
+def _trap_int(z3, model, expr, default=0) -> int:
+    v = model.eval(expr, model_completion=True)
+    if z3.is_true(v):
+        return 1
+    if z3.is_false(v):
+        return 0
+    if z3.is_bv_value(v):
+        return v.as_long()
+    return default
+
+
+def _trap_entry_selfcheck(z3, n_random: int) -> int:
+    """trap_entry_*() 与 trap_entry_*_smt 在同一套 eq_assumes 下必须一致。"""
+    bad = 0
+    decls = make_trap_decls(z3)
+
+    print("\n---- TrapEntry 规格 ----")
+    for label, assume_fn in (
+        ("M", spec_trap_entry.eq_assumes_m),
+        ("HS", spec_trap_entry.eq_assumes_hs),
+    ):
+        assumes = parse_assumes(z3, decls, assume_fn())
+        vac = z3.Solver()
+        vac.add(assumes)
+        if vac.check() != z3.sat:
+            print(f"FAIL 真空：TrapEntry{label} eq_assumes 不可满足")
+            return 1
+        print(f"ok   真空：TrapEntry{label} eq_assumes 可满足")
+
+    assumes_m = parse_assumes(z3, decls, spec_trap_entry.eq_assumes_m())
+    spec_m = spec_trap_entry.trap_entry_m_smt(z3, decls)
+    # 已知点：从 HS、MIE=1 陷入 M。
+    s = z3.Solver()
+    s.add(assumes_m)
+    s.add(decls["in_privState_PRVM"] == 1)
+    s.add(z3.Not(decls["in_privState_V"]))
+    s.add(decls["in_mstatus_MIE"])
+    s.add(z3.Not(decls["in_causeNO_Interrupt"]))
+    s.add(decls["in_causeNO_ExceptionCode"] == 2)
+    if s.check() != z3.sat:
+        print("FAIL 点测：TrapEntryM 已知场景与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        py = spec_trap_entry.trap_entry_m(1, False, True, False, 2)
+        if (bool(m.eval(spec_m["mpie"])) != py.mpie or
+                bool(m.eval(spec_m["mie"])) != py.mie or
+                m.eval(spec_m["mpp"]).as_long() != py.mpp or
+                bool(m.eval(spec_m["mpv"])) != py.mpv or
+                m.eval(spec_m["prvm"]).as_long() != py.prvm):
+            print("FAIL 点测：TrapEntryM Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：TrapEntryM HS+MIE=1 → MPIE=1,MIE=0,MPP=1,特权=M")
+
+    assumes_hs = parse_assumes(z3, decls, spec_trap_entry.eq_assumes_hs())
+    spec_hs = spec_trap_entry.trap_entry_hs_smt(z3, decls)
+    s = z3.Solver()
+    s.add(assumes_hs)
+    s.add(decls["in_privState_PRVM"] == 0)
+    s.add(z3.Not(decls["in_privState_V"]))
+    s.add(decls["in_mstatus_SIE"])
+    if s.check() != z3.sat:
+        print("FAIL 点测：TrapEntryHS 已知场景与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        py = spec_trap_entry.trap_entry_hs(0, False, True, False, False, 0)
+        if (bool(m.eval(spec_hs["spie"])) != py.spie or
+                bool(m.eval(spec_hs["sie"])) != py.sie or
+                bool(m.eval(spec_hs["spp"])) != py.spp):
+            print("FAIL 点测：TrapEntryHS Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：TrapEntryHS HU+SIE=1 → SPIE=1,SIE=0,SPP=0")
+
+    s = z3.Solver()
+    s.add(assumes_m)
+    compared = 0
+    for _ in range(n_random):
+        if s.check() != z3.sat:
+            break
+        m = s.model()
+        prvm = _trap_int(z3, m, decls["in_privState_PRVM"])
+        v = bool(_trap_int(z3, m, decls["in_privState_V"]))
+        mie = bool(_trap_int(z3, m, decls["in_mstatus_MIE"]))
+        interrupt = bool(_trap_int(z3, m, decls["in_causeNO_Interrupt"]))
+        code = _trap_int(z3, m, decls["in_causeNO_ExceptionCode"])
+        py = spec_trap_entry.trap_entry_m(prvm, v, mie, interrupt, code)
+        if (bool(m.eval(spec_m["mpie"])) != py.mpie or
+                m.eval(spec_m["mpp"]).as_long() != py.mpp or
+                bool(m.eval(spec_m["interrupt"])) != py.interrupt):
+            print(f"FAIL 随机点 TrapEntryM priv={spec_trap_entry.mode_name(prvm, v)}")
+            bad += 1
+            break
+        compared += 1
+        s.add(z3.Or(
+            decls["in_privState_PRVM"] != m.eval(decls["in_privState_PRVM"]),
+            decls["in_mstatus_MIE"] != m.eval(decls["in_mstatus_MIE"]),
+            decls["in_causeNO_ExceptionCode"] != m.eval(decls["in_causeNO_ExceptionCode"]),
+        ))
+    print(f"{'ok' if bad == 0 else 'FAIL'}   随机点：TrapEntryM 比对 {compared} 个具体化模型")
+    return bad

@@ -28,6 +28,13 @@ object Elab2 {
       case "VirtualLevelPermitModule" => new xiangshan.backend.fu.NewCSR.VirtualLevelPermitModule
       case "XRetPermitModule"         => new xiangshan.backend.fu.NewCSR.XRetPermitModule
       case "NewCSR"           => new xiangshan.backend.fu.NewCSR.NewCSR
+      // TrapEntry*：陷入次态。M/HS/VS/MN 普查为 registers=0；
+      // TrapEntryDEvent 有寄存器，精化后必须报明，禁止假装时序完整。
+      case "TrapEntryMEventModule"  => new xiangshan.backend.fu.NewCSR.CSREvents.TrapEntryMEventModule
+      case "TrapEntryHSEventModule" => new xiangshan.backend.fu.NewCSR.CSREvents.TrapEntryHSEventModule
+      case "TrapEntryVSEventModule" => new xiangshan.backend.fu.NewCSR.CSREvents.TrapEntryVSEventModule
+      case "TrapEntryMNEventModule" => new xiangshan.backend.fu.NewCSR.CSREvents.TrapEntryMNEventModule
+      case "TrapEntryDEventModule"  => new xiangshan.backend.fu.NewCSR.CSREvents.TrapEntryDEventModule
       case other              => throw new IllegalArgumentException(s"unknown module: $other")
     }
   }

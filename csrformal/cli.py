@@ -7,7 +7,7 @@
   csrformal spec-baseline        把当前被引用的规则原文快照成基线
   csrformal spec-drift           基线 vs 指定版本的规范漂移检测
   csrformal self-test            变异回归：注入已知缺陷，确认对应性质能杀死它
-  csrformal spec-selfcheck       规格自洽：permit() 与 permit_smt() 必须一致
+  csrformal spec-selfcheck       规格自洽：permit / trap_entry 的 Python 与 SMT 必须一致
   csrformal spike                打印 Spike 交叉检查说明
   csrformal spike-cex            对已有报告里的反例问 Spike（缺二进制则跳过）
 """
@@ -393,7 +393,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_spec_drift)
 
     p = sub.add_parser("spec-selfcheck",
-                       help="规格自洽：permit() 与 permit_smt() 必须一致")
+                       help="规格自洽：permit / trap_entry 的 Python 与 SMT 必须一致")
     p.add_argument("--random", type=int, default=64,
                    help="补充随机具体化点数（默认 64）")
     p.set_defaults(fn=cmd_spec_selfcheck)

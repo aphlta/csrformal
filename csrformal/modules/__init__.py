@@ -57,7 +57,7 @@ def _mut(path: str) -> str:
 
 
 def _build() -> Dict[str, ModuleSpec]:
-    from . import csr_permit, trap_handle
+    from . import csr_permit, trap_handle, trap_entry
     specs = {}
 
     specs["CSRPermitModule"] = ModuleSpec(
@@ -107,6 +107,20 @@ def _build() -> Dict[str, ModuleSpec]:
                    "回滚 74fd4f59：VS 向量化入口 PC 用未映射的中断号",
                    _mut("pc3_TrapHandleModule.scala"), ["V3"]),
         ])
+
+    events = os.path.join(NEWCSR, "CSREvents")
+    specs["TrapEntryMEventModule"] = ModuleSpec(
+        name="TrapEntryMEventModule",
+        props=trap_entry.PROPS_M,
+        sources={"TrapEntryMEventModule": os.path.join(events, "TrapEntryMEvent.scala")},
+        doc="陷入 M 后各 CSR 次态（EQ：MIE/MPIE/MPP/MPV/特权/mcause；带别名假设）",
+    )
+    specs["TrapEntryHSEventModule"] = ModuleSpec(
+        name="TrapEntryHSEventModule",
+        props=trap_entry.PROPS_HS,
+        sources={"TrapEntryHSEventModule": os.path.join(events, "TrapEntryHSEvent.scala")},
+        doc="陷入 HS 后各 CSR 次态（EQ：SIE/SPIE/SPP/SPV/SPVP/特权/scause；别名是负载）",
+    )
     return specs
 
 

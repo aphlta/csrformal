@@ -11,15 +11,18 @@ csrformal is licensed under [Mulan PSL v2](LICENSE).
 
 ## 适用范围
 
-`CSRPermitModule` 与 `TrapHandleModule` 精化后 registers=0，是纯组合。
-输入是特权态、CSR 地址和一组 enable 位。SMT 在假设允许的自由位上穷尽，
-不是在全输入空间上证明整本规范。
+`CSRPermitModule`、`TrapHandleModule` 与 `TrapEntry{M,HS}EventModule`
+精化后 registers=0，是纯组合。TrapEntry EQ 是 CSRPermit EQ 的方法移植，
+同样是带假设的局部等价，不是「符合整本特权规范」。
+输入是特权态、CSR 地址和一组 enable 位（TrapEntry 则是陷入前架构状态）。
+SMT 在假设允许的自由位上穷尽，不是在全输入空间上证明整本规范。
 
 自检：
 
 - 假设集不可满足判 `VACUOUS`（失败），不是通过。
 - `spec-drift` 比对被引用规则的原文；EQ 的条款在 `extra_refs` 里，必须进基线。
-- `spec-selfcheck` 证明 `permit()` 与 `permit_smt()` 在同一套 `eq_assumes` 下一致。
+- `spec-selfcheck` 证明 `permit()` 与 `permit_smt()`、以及 TrapEntry 的
+  Python 次态与 SMT 公式，在同一套 `eq_assumes` 下一致。
 - `self-test` 注入已知缺陷，要求意图对应的性质报反例。
 
 规则追溯的案例见 [规范漂移 demo](#规范漂移-demo)。
@@ -87,7 +90,7 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 # 把「需要重新审阅」的性质喂回去重跑
 ./bin/csrformal check all --review out/reports/spec-drift.json
 
-# 5) 规格自洽（permit() 与 permit_smt()）
+# 5) 规格自洽（permit / trap_entry 的 Python 与 SMT）
 ./bin/csrformal spec-selfcheck
 
 # 6) 变异回归（阳性对照）
@@ -111,9 +114,12 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 
 - `CSRPermitModule` 156 条（case + 3 条 MONO + 1 条 EQ）
 - `TrapHandleModule` 140 条
+- `TrapEntryMEventModule` / `TrapEntryHSEventModule` 各 1 条 EQ
+  （陷入次态；sstatus 是 mstatus 视图的别名假设）
+- `TrapEntryDEventModule` 精化后 registers≠0，跳过，不假装时序完整
 - 当前红的是 `CSRPermit/S3` 与 `CSRPermit/EQ-permit`，反例都是
   `vstimecmp` + `menvcfg.STCE=0` 一类。EQ 绿只表示「已建模条款 + 假设关掉的路径」
-  下 RTL 与 `permit()` 一致，不等于符合整本规范。
+  下 RTL 与规格一致，不等于符合整本规范。
 - 精化有缓存，单条 `--only` 是秒级。不要无故 `--rebuild`。
 
 ## 规范漂移 demo
@@ -189,6 +195,7 @@ csrformal/
   config.py                路径与外部工具配置（环境变量可覆盖）
   props.py                 Property / SpecRef 数据模型（含可选 prove_fn）
   spec_permit.py           CSRPermit 独立规格函数（等价性层；禁止抄 Chisel）
+  spec_trap_entry.py       TrapEntry 陷入次态规格（别名表 + EQ；禁止抄 Chisel）
   specdb.py                规范规则库：adoc 锚点提取、原文哈希、基线、漂移比对
   elaborate.py             Chisel → CHIRRTL → SystemVerilog（含覆盖编译的硬校验）
   smt.py                   SV → SMT2 → z3（电路只 parse 一次，性质用 push/pop）
@@ -201,6 +208,7 @@ csrformal/
     __init__.py            模块注册表（性质 + 源文件 + 变异体）
     csr_permit.py          CSRPermitModule 156 条（case + MONO + EQ）
     trap_handle.py         TrapHandleModule 的 140 条性质
+    trap_entry.py          TrapEntry{M,HS}EventModule 的 EQ-next
 src/eqcheck/Elab2.scala    最小精化 harness（把单个子模块当 top）
 mutants-src/               变异体源码（base_* 与各变异版本）
 spec/baseline.json         权威基线：恢复后的被引用规则原文
@@ -221,8 +229,10 @@ docs/spike-crosscheck.md   Spike 反例定性（未默认启用）
 
 ### registers=0
 
-`CSRPermitModule` 与 `TrapHandleModule` 精化后 registers=0，为纯组合逻辑，单周期求解即完整。
-跨模块契约（`irToVS ⇒ irToHS`、`intrVec ≤ 63`）未验证，作为假设处理，见「已知限制」。
+`CSRPermitModule`、`TrapHandleModule` 与 `TrapEntry{M,HS}EventModule`
+精化后 registers=0，为纯组合逻辑，单周期求解即完整。
+跨模块契约（`irToVS ⇒ irToHS`、`intrVec ≤ 63`、以及 TrapEntry 的
+`sstatus`/`mstatus` 字段别名）未验证，作为假设处理，见「已知限制」。
 
 ## 怎么加一条新性质
 
@@ -303,7 +313,8 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 
 ## 已知限制
 
-1. 单周期组合逻辑。目前两个模块 registers=0，单周期即完整；但工具不支持时序展开，
+1. 单周期组合逻辑。目前 CSRPermit / TrapHandle / TrapEntry{M,HS} 都是
+   registers=0，单周期即完整；但工具不支持时序展开，
    有状态的模块加进来只能覆盖组合部分。扩展到 MStatus/Mip 等有状态模块需要
    BMC/归纳，与当前组合 EQ 不是同一工程量级。
 2. 跨模块契约是假设。`TrapHandleModule` 的输入 `irToHS` / `irToVS` / `intrVec`
@@ -312,7 +323,9 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
    没有 `norm:` 锚点体系；特权单调性是结构性元性质，不对应单条条文。
    这些在报告的「规范规则追溯」一节里逐条列出了原因。
 4. 未覆盖的模块：`InterruptFilter`（由另一项工作进行中）、`XRetPermitModule`
-   （MRET/SRET/DRET/MNRET，与 debug 规范耦合）、`MStatusModule`、`MipModule`。
+   （MRET/SRET/DRET/MNRET，与 debug 规范耦合）、`MStatusModule`、`MipModule`、
+   `TrapEntryDEventModule`（registers≠0，跳过）、`TrapEntryVS`/`MN` 的 EQ
+   （本轮只移植了 M/HS）。
 5. 未覆盖的条款：异常优先级表（规范把若干异常放在同一优先级组、组内无序，
    且把 load/store 地址不对齐相对页错误定为实现自定义，香山的差异落在规范
    未约束的自由度内）、AIA iprio 窗口的奇偶规则、fp/vec 的 `mstatus.FS/VS`、
@@ -323,6 +336,8 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
 9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
    以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款靠假设关掉。
+   `TrapEntryM/EQ-next` 与 `TrapEntryHS/EQ-next` 同样是带假设的局部等价：
+   只比手册赋值句点名的次态字段，tval/mepc/NMI/debug/DT/MDT/SDT 关掉。
    EQ 绿 ≠ 符合整本规范。假设太松会被无关条款打红，应收紧假设或扩规格，
    不要抄比较器凑绿。
 
@@ -350,6 +365,7 @@ firtool 1.135.0 / yosys 0.68；精化请用宿主机或 xs-env。此镜像未当
 
 - 被测源码：已编译 XiangShan 工作树中的
   `src/main/scala/xiangshan/backend/fu/NewCSR/`
-  （`CSRPermitModule.scala`、`TrapHandleModule.scala`）
+  （`CSRPermitModule.scala`、`TrapHandleModule.scala`、
+  `CSREvents/TrapEntry{M,HS}Event.scala`）
 - 规范：`riscv/riscv-isa-manual`，`src/priv/*.adoc`
 - License：[Mulan PSL v2](LICENSE)
