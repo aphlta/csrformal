@@ -7,7 +7,9 @@
   csrformal spec-baseline        把当前被引用的规则原文快照成基线
   csrformal spec-drift           基线 vs 指定版本的规范漂移检测
   csrformal self-test            变异回归：注入已知缺陷，确认对应性质能杀死它
-  csrformal spike                多参照交叉检查（Spike）—— 目前只有接口与设计说明
+  csrformal spec-selfcheck       规格自洽：permit() 与 permit_smt() 必须一致
+  csrformal spike                打印 Spike 交叉检查说明
+  csrformal spike-cex            对已有报告里的反例问 Spike（缺二进制则跳过）
 """
 import argparse
 import json
@@ -92,6 +94,16 @@ def cmd_check(args):
                 print(f"       {k} = {v}")
             for k, v in r.outputs.items():
                 print(f"       [out] {k} = {v}")
+    if getattr(args, "spike", False):
+        from . import spike_oracle
+        print("\n---- Spike 反例定性（不穷举；缺 spike 则跳过）----")
+        doc = {
+            "properties": [{
+                "pid": r.prop.pid, "status": r.status, "prove": r.prop.prove,
+                "counterexample": r.counterexample, "outputs": r.outputs,
+            } for r in all_results if r.status == runner.VIOLATED]
+        }
+        spike_oracle.print_votes(spike_oracle.votes_from_report(doc))
     return 1 if (s[runner.VIOLATED] or s[runner.VACUOUS] or s[runner.ERROR]) else 0
 
 
@@ -165,6 +177,20 @@ def cmd_lint(args):
         if rid not in rules:
             print(f"  [规则 id 不存在于 {args.ref}] {rid}  ← {len(pids)} 条性质")
             bad += 1
+    if os.path.exists(config.BASELINE_JSON):
+        bl = specdb.load_baseline()
+        if str(bl.get("commit", "")).startswith(config.DELETED_STCE_REF[:12]):
+            print("  [权威基线] commit 是 f20aa35（误删时点），不是 EQ 权威")
+            bad += 1
+        stce = bl.get("rules", {}).get("norm:menvcfg_stce_op2")
+        if stce is not None and "vstimecmp" not in stce.get("text", ""):
+            print("  [权威基线] menvcfg_stce_op2 缺少 vstimecmp，像是误删文本")
+            bad += 1
+        # EQ 的 extra_refs 必须进基线 properties，否则 spec-drift 看不见等价性层。
+        stce_props = (stce or {}).get("properties") or []
+        if "CSRPermit/EQ-permit" not in stce_props:
+            print("  [权威基线] norm:menvcfg_stce_op2.properties 漏了 CSRPermit/EQ-permit")
+            bad += 1
     print(f"\n性质 {len(props)} 条，引用规则 {len(referenced_rules())} 条，"
           f"规范 {args.ref[:12]} 共 {len(rules)} 条规则。问题 {bad} 处。")
     return 1 if bad else 0
@@ -173,8 +199,9 @@ def cmd_lint(args):
 # ------------------------------------------------------------------ 规范基线 / 漂移
 
 def cmd_spec_baseline(args):
-    doc = specdb.write_baseline(args.ref, referenced_rules(), config.BASELINE_JSON)
-    print(f"基线已写入 {config.BASELINE_JSON}")
+    path = args.output or config.BASELINE_JSON
+    doc = specdb.write_baseline(args.ref, referenced_rules(), path)
+    print(f"基线已写入 {path}")
     print(f"  {config.SPEC_REPO} @ {doc['commit'][:12]}  ({doc['commit_date']})")
     print(f"  快照规则 {doc['rule_count']} 条")
     if doc["unresolved"]:
@@ -184,7 +211,7 @@ def cmd_spec_baseline(args):
 
 
 def cmd_spec_drift(args):
-    bl = specdb.load_baseline()
+    bl = specdb.load_baseline(args.baseline) if args.baseline else specdb.load_baseline()
     print(f"基线： {config.SPEC_REPO} @ {bl['commit'][:12]}  ({bl['commit_date']})")
     sha, drifts = specdb.diff_against(bl, args.ref)
     print(f"对照： {config.SPEC_REPO} @ {sha[:12]}  ({specdb.commit_date(sha)})")
@@ -192,22 +219,21 @@ def cmd_spec_drift(args):
     print(f"\n检查 {len(drifts)} 条被引用规则，发现 {len(changed)} 条发生变化。\n")
     affected = set()
     for d in changed:
-        print("=" * 78)
         print(f"[{d.status}] {d.rule_id}")
         print(f"  基线位置 {d.old_loc}  sha={d.old_sha}")
         print(f"  当前位置 {d.new_loc}  sha={d.new_sha or '-'}")
-        print("  --- 词级差异（- 基线 / + 当前）---")
+        print("  词级差异（- 基线 / + 当前）")
         for ln in specdb.word_diff(d.old_text, d.new_text).splitlines():
             print("    " + ln)
-        print("  --- 当前原文 ---")
+        print("  当前原文")
         print("    " + specdb.normalize(d.new_text)[:600])
-        print(f"  --- 受影响、需要重新审阅的性质（{len(d.properties)} 条）---")
+        print(f"  受影响、需要重新审阅的性质（{len(d.properties)} 条）")
         for pid in d.properties:
             print(f"    * {pid}")
         affected |= set(d.properties)
+        print()
     if changed:
-        print("=" * 78)
-        print(f"\n结论：{len(changed)} 条规则文本已变化，{len(affected)} 条性质需要重新审阅。")
+        print(f"结论：{len(changed)} 条规则文本已变化，{len(affected)} 条性质需要重新审阅。")
         print("下一步：`csrformal check <模块> --only <pid>` 用当前 RTL 重跑这些性质，"
               "确认实现是否仍然符合改后的规范。")
     else:
@@ -295,12 +321,32 @@ def cmd_self_test(args):
     return 0 if killed == total else 1
 
 
-# ------------------------------------------------------------------ Spike（P2 占位）
+# ------------------------------------------------------------------ 规格自洽 / Spike
+
+def cmd_spec_selfcheck(args):
+    from .spec_selfcheck import run_selfcheck
+    return run_selfcheck(n_random=args.random)
+
 
 def cmd_spike(args):
     doc = os.path.join(config.ROOT, "docs", "spike-crosscheck.md")
     print(open(doc, encoding="utf-8").read() if os.path.exists(doc)
           else "设计说明缺失：docs/spike-crosscheck.md")
+    return 0
+
+
+def cmd_spike_cex(args):
+    from . import spike_oracle
+    path = args.report
+    if not os.path.exists(path):
+        raise SystemExit(f"报告不存在: {path}")
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    votes = spike_oracle.votes_from_report(doc)
+    spike_oracle.print_votes(votes)
+    # 缺 spike 是跳过，不是失败。真跑了且需要当门禁时看 --strict。
+    if args.strict and any(v.spike is None for v in votes):
+        return 1
     return 0
 
 
@@ -318,6 +364,8 @@ def main(argv=None):
                    help="只重跑 spec-drift 标记为需重新审阅的性质")
     p.add_argument("--rebuild", action="store_true", help="强制重新精化")
     p.add_argument("--report", help="Markdown 报告路径")
+    p.add_argument("--spike", action="store_true",
+                   help="对 VIOLATED 反例问 Spike（缺二进制则跳过，不穷举）")
     p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("list", help="列出已注册的性质")
@@ -334,12 +382,21 @@ def main(argv=None):
 
     p = sub.add_parser("spec-baseline", help="快照当前被引用规则的原文为基线")
     p.add_argument("--ref", default=config.BASELINE_REF)
+    p.add_argument("--output", help="写入路径（默认 spec/baseline.json；"
+                   "demo 必须写旁路，禁止把 f20aa35 写进权威基线）")
     p.set_defaults(fn=cmd_spec_baseline)
 
     p = sub.add_parser("spec-drift", help="规范漂移检测")
     p.add_argument("--ref", default="main", help="与哪个版本比（默认 main）")
+    p.add_argument("--baseline", help="基线 JSON 路径（默认 spec/baseline.json）")
     p.add_argument("--json", help="结构化结果输出路径")
     p.set_defaults(fn=cmd_spec_drift)
+
+    p = sub.add_parser("spec-selfcheck",
+                       help="规格自洽：permit() 与 permit_smt() 必须一致")
+    p.add_argument("--random", type=int, default=64,
+                   help="补充随机具体化点数（默认 64）")
+    p.set_defaults(fn=cmd_spec_selfcheck)
 
     p = sub.add_parser("self-test", help="变异回归（阳性对照）")
     p.add_argument("--module")
@@ -348,8 +405,14 @@ def main(argv=None):
     p.add_argument("--report")
     p.set_defaults(fn=cmd_self_test)
 
-    p = sub.add_parser("spike", help="Spike 交叉检查（接口与设计说明）")
+    p = sub.add_parser("spike", help="Spike 交叉检查说明")
     p.set_defaults(fn=cmd_spike)
+
+    p = sub.add_parser("spike-cex", help="对报告里的反例问 Spike（缺则跳过）")
+    p.add_argument("report", help="compliance.json 路径")
+    p.add_argument("--strict", action="store_true",
+                   help="缺 spike 也当失败（默认跳过，退出码 0）")
+    p.set_defaults(fn=cmd_spike_cex)
 
     args = ap.parse_args(argv)
     os.makedirs(config.OUT_DIR, exist_ok=True)

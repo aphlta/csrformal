@@ -228,6 +228,198 @@ class Enables:
 
 
 # ---------------------------------------------------------------- 可执行决策
+# permit() 与 permit_smt() 是两套实现。自检把 permit() 的决策体
+# （permit_terms）编成公式，再在同一套 eq_assumes 下证与 permit_smt 等价。
+# 不要为了对齐去改这里抄 RTL。
+
+
+class _PyOps:
+    """permit() 的具体解释：普通 Python 布尔。"""
+
+    def And(self, *xs):
+        acc = True
+        for x in xs:
+            acc = acc and bool(x)
+        return acc
+
+    def Or(self, *xs):
+        acc = False
+        for x in xs:
+            acc = acc or bool(x)
+        return acc
+
+    def Not(self, x):
+        return not x
+
+    def eq(self, a, b):
+        return a == b
+
+    def isin(self, x, vals):
+        return x in vals
+
+    def If(self, c, t, e):
+        return t if c else e
+
+    def extract(self, hi, lo, x):
+        return (int(x) >> lo) & ((1 << (hi - lo + 1)) - 1)
+
+    def bit(self, reg, idx):
+        return bool((int(reg) >> idx) & 1)
+
+    def dyn_bit(self, reg, idx5):
+        return bool((int(reg) >> int(idx5)) & 1)
+
+    def uge(self, a, b):
+        return int(a) >= int(b)
+
+    def ule(self, a, b):
+        return int(a) <= int(b)
+
+
+class _Z3Ops:
+    """同一套决策体的 SMT 解释，给自检用。"""
+
+    def __init__(self, z3):
+        self.z3 = z3
+
+    def And(self, *xs):
+        return self.z3.And(*xs) if xs else self.z3.BoolVal(True)
+
+    def Or(self, *xs):
+        return self.z3.Or(*xs) if xs else self.z3.BoolVal(False)
+
+    def Not(self, x):
+        return self.z3.Not(x)
+
+    def eq(self, a, b):
+        return a == b
+
+    def isin(self, x, vals):
+        return self.z3.Or(*[x == v for v in vals])
+
+    def If(self, c, t, e):
+        return self.z3.If(c, t, e)
+
+    def extract(self, hi, lo, x):
+        return self.z3.Extract(hi, lo, x)
+
+    def bit(self, reg, idx):
+        return self.z3.Extract(idx, idx, reg) == 1
+
+    def dyn_bit(self, reg, idx5):
+        return _bv_dyn_bit(self.z3, reg, idx5)
+
+    def uge(self, a, b):
+        return self.z3.UGE(a, b)
+
+    def ule(self, a, b):
+        return self.z3.ULE(a, b)
+
+
+def _priv_ok_terms(ops, prvm, v, addr, debug_mode):
+    """csr[9:8] 最低特权 × 当前 (PRVM, V)；0x7B* 仅 debug。
+
+    真值表来自 Zicsr 地址约定，不是 PrivilegePermitModule 的 decoder。
+    00=U 全体可访问；01=S 要 PRVM≥S（M/HS/VS）；10=HS 只要 M/HS；
+    11=M 只要 M。更高特权可访问更低 CSR（norm:Zicsr_higher_priv）。
+    """
+    is_dbg = ops.eq(ops.extract(11, 4, addr), 0x7B)
+    level = ops.extract(9, 8, addr)
+    is_m = ops.And(ops.eq(prvm, 3), ops.Not(v))
+    is_hs = ops.And(ops.eq(prvm, 1), ops.Not(v))
+    is_vs = ops.And(ops.eq(prvm, 1), v)
+    return ops.If(
+        is_dbg, debug_mode,
+        ops.If(ops.eq(level, 0), True,
+               ops.If(ops.eq(level, 1), ops.Or(is_m, is_hs, is_vs),
+                      ops.If(ops.eq(level, 2), ops.Or(is_m, is_hs), is_m))))
+
+
+def _hs_would_allow_terms(ops, addr, wen):
+    """HS-qualified：同一访问在 HS、TVM=0 时是否合法。
+
+    用来在 V=1 时决定 II 还是 VI（norm:H_cause_virtual_instruction）。
+    写只读、访 M 级、访 debug-only，在 HS 都不合法，所以不是 HS-qualified，
+    应抛 II 而不是 VI。这里不读 RTL 的 `csrIsM` 分支，只复述这条定义。
+    """
+    is_dbg = ops.eq(ops.extract(11, 4, addr), 0x7B)
+    level = ops.extract(9, 8, addr)
+    ro = ops.eq(ops.extract(11, 10, addr), 3)
+    return ops.And(ops.Not(is_dbg), ops.Not(ops.eq(level, 3)),
+                   ops.Not(ops.And(ro, wen)))
+
+
+def permit_terms(ops, prvm, v, addr, ren, wen, en: Enables):
+    """permit() 的决策体。ops 是 Python 或 z3，条款顺序与函数注释一致。
+
+    返回 (ii, vi)，vi 已含 II 优先（与 permit_smt 的 spec_vi 同一形状）。
+    """
+    access = ops.Or(ren, wen)
+    is_m = ops.And(ops.eq(prvm, 3), ops.Not(v))
+    is_hs = ops.And(ops.eq(prvm, 1), ops.Not(v))
+    is_hu = ops.And(ops.eq(prvm, 0), ops.Not(v))
+    is_vs = ops.And(ops.eq(prvm, 1), v)
+    is_vu = ops.And(ops.eq(prvm, 0), v)
+
+    priv_ok = _priv_ok_terms(ops, prvm, v, addr, en.debug_mode)
+    hs_would = _hs_would_allow_terms(ops, addr, wen)
+    priv_ii = ops.And(ops.Not(priv_ok), ops.Or(ops.Not(v), ops.Not(hs_would)))
+    priv_vi = ops.And(ops.Not(priv_ok), v, hs_would)
+
+    ro = ops.eq(ops.extract(11, 10, addr), 3)
+    ro_ii = ops.And(ro, wen)
+
+    # Sstc：恢复后的 stce_op2 覆盖 stimecmp 或 vstimecmp。
+    is_stimecmp = ops.eq(addr, ADDR_STIMECMP)
+    is_vstimecmp = ops.eq(addr, ADDR_VSTIMECMP)
+    is_stc = ops.Or(is_stimecmp, is_vstimecmp)
+    stce_m_ii = ops.And(is_stc, ops.Not(is_m), ops.Not(en.menvcfg_stce))
+    tm_m_ii = ops.And(is_stc, ops.Not(is_m), ops.Not(ops.bit(en.mcounteren, 1)))
+    stce_h_vi = ops.And(is_stimecmp, v, ops.Not(en.henvcfg_stce))
+    tm_h_vi = ops.And(is_stimecmp, is_vs, ops.Not(ops.bit(en.hcounteren, 1)),
+                      ops.bit(en.mcounteren, 1))
+
+    # counteren：手册编码，低 5 位就是位号。写走只读条款。
+    is_hpm = ops.And(ops.uge(addr, ADDR_CYCLE), ops.ule(addr, ADDR_HPM31))
+    bit = ops.extract(4, 0, addr)
+    mbit = ops.dyn_bit(en.mcounteren, bit)
+    hbit = ops.dyn_bit(en.hcounteren, bit)
+    sbit = ops.dyn_bit(en.scounteren, bit)
+    mcnt_ii = ops.And(is_hpm, ren, ops.Not(is_m), ops.Not(mbit))
+    scnt_ii = ops.And(is_hpm, ren, is_hu, ops.Not(sbit))
+    hcnt_vi = ops.And(is_hpm, ren, v, mbit, ops.Not(hbit))
+    scnt_vi = ops.And(is_hpm, ren, is_vu, mbit, hbit, ops.Not(sbit))
+
+    tvm_ii = ops.And(is_hs, en.tvm, ops.isin(addr, (ADDR_SATP, ADDR_HGATP)))
+    vtvm_vi = ops.And(is_vs, en.vtvm, ops.eq(addr, ADDR_SATP))
+
+    st = en.stateen
+    se_m_ii, se_h_vi = [], []
+    for i in range(4):
+        se_m_ii.append(ops.And(ops.isin(addr, (ADDR_SSTATEEN[i], ADDR_HSTATEEN[i])),
+                               ops.Not(is_m), ops.Not(st.m_se[i])))
+        se_h_vi.append(ops.And(ops.eq(addr, ADDR_SSTATEEN[i]), v, ops.Not(st.h_se[i])))
+    env_m_ii = ops.And(ops.isin(addr, (ADDR_SENVCFG, ADDR_HENVCFG)),
+                       ops.Not(is_m), ops.Not(st.m_envcfg))
+    env_h_vi = ops.And(ops.eq(addr, ADDR_SENVCFG), v, ops.Not(st.h_envcfg))
+    ctx_m_ii = ops.And(ops.isin(addr, (ADDR_SCONTEXT, ADDR_HCONTEXT)),
+                       ops.Not(is_m), ops.Not(st.m_context))
+    ctx_h_vi = ops.And(ops.eq(addr, ADDR_SCONTEXT), v, ops.Not(st.h_context))
+    imsic_m_ii = ops.And(ops.isin(addr, (ADDR_STOPEI, ADDR_VSTOPEI)),
+                         ops.Not(is_m), ops.Not(st.m_imsic))
+    imsic_h_vi = ops.And(ops.eq(addr, ADDR_STOPEI), v, ops.Not(st.h_imsic))
+    csrind_m_ii = ops.And(ops.isin(addr, ADDR_SIREG + ADDR_VSIREG),
+                          ops.Not(is_m), ops.Not(st.m_csrind))
+    csrind_h_vi = ops.And(ops.isin(addr, ADDR_SIREG), v, ops.Not(st.h_csrind))
+
+    any_ii = ops.And(access, ops.Or(
+        priv_ii, ro_ii, stce_m_ii, tm_m_ii, mcnt_ii, scnt_ii, tvm_ii,
+        *se_m_ii, env_m_ii, ctx_m_ii, imsic_m_ii, csrind_m_ii))
+    any_vi = ops.And(access, ops.Or(
+        priv_vi, stce_h_vi, tm_h_vi, hcnt_vi, scnt_vi, vtvm_vi,
+        *se_h_vi, env_h_vi, ctx_h_vi, imsic_h_vi, csrind_h_vi),
+                     ops.Not(any_ii))
+    return any_ii, any_vi
 
 
 def _mode(prvm: int, v: bool):
@@ -240,132 +432,20 @@ def _mode(prvm: int, v: bool):
 
 
 def _priv_ok(prvm: int, v: bool, addr: int, debug_mode: bool) -> bool:
-    """csr[9:8] 最低特权 × 当前 (PRVM, V)；0x7B* 仅 debug。
-
-    真值表来自 Zicsr 地址约定，不是 PrivilegePermitModule 的 decoder。
-    00=U 全体可访问；01=S 要 PRVM≥S（M/HS/VS）；10=HS 只要 M/HS；
-    11=M 只要 M。更高特权可访问更低 CSR（norm:Zicsr_higher_priv）。
-    """
-    if ((addr >> 4) & 0xFF) == 0x7B:
-        return bool(debug_mode)
-    level = (addr >> 8) & 3
-    is_m, is_hs, _is_hu, is_vs, _is_vu = _mode(prvm, v)
-    if level == 0:
-        return True
-    if level == 1:
-        return is_m or is_hs or is_vs
-    if level == 2:
-        return is_m or is_hs
-    return is_m
+    return _priv_ok_terms(_PyOps(), prvm, v, addr, debug_mode)
 
 
 def _hs_would_allow(addr: int, wen: bool) -> bool:
-    """HS-qualified：同一访问在 HS、TVM=0 时是否合法。
-
-    用来在 V=1 时决定 II 还是 VI（norm:H_cause_virtual_instruction）。
-    写只读、访 M 级、访 debug-only，在 HS 都不合法，所以不是 HS-qualified，
-    应抛 II 而不是 VI。这里不读 RTL 的 `csrIsM` 分支，只复述这条定义。
-    """
-    if ((addr >> 4) & 0xFF) == 0x7B:
-        return False
-    level = (addr >> 8) & 3
-    if level == 3:
-        return False
-    if ((addr >> 10) & 3) == 3 and wen:
-        return False
-    return True
+    return _hs_would_allow_terms(_PyOps(), addr, wen)
 
 
 def permit(prvm: int, v: bool, addr: int, ren: bool, wen: bool,
            en: Enables) -> str:
     """返回 'II' / 'VI' / 'NONE'。无访问则 NONE。II 优先于 VI。"""
-    access = bool(ren or wen)
-    if not access:
-        return "NONE"
-
-    is_m, is_hs, is_hu, is_vs, is_vu = _mode(prvm, v)
-    any_ii = False
-    any_vi = False
-
-    # --- Privilege（rule: zicsr_* + hs_qual / vi_h_vs / vi_s_vu）---
-    if not _priv_ok(prvm, v, addr, en.debug_mode):
-        if v and _hs_would_allow(addr, wen):
-            any_vi = True
-        else:
-            any_ii = True
-
-    # --- 只读写（rule: zicsr_rw / zicsr_ro）---
-    # 写只读在 HS 也不合法，故即令 V=1 也是 II（已被 hs_would_allow 排除 VI）。
-    if ((addr >> 10) & 3) == 3 and wen:
-        any_ii = True
-
-    # --- Sstc（rule: stce2 用恢复后的原文：stimecmp 或 vstimecmp）---
-    is_stc = addr in (ADDR_STIMECMP, ADDR_VSTIMECMP)
-    is_stimecmp = addr == ADDR_STIMECMP
-    if is_stc and not is_m and not en.menvcfg_stce:
-        any_ii = True
-    # mcounteren.TM=0：非 M 访 stimecmp 或 vstimecmp → II
-    if is_stc and not is_m and not ((en.mcounteren >> 1) & 1):
-        any_ii = True
-    # henvcfg.STCE=0：V=1 访 stimecmp（其实是 vstimecmp）→ VI
-    # 原文写的是 V=1，不是「仅 VS」。VU 会被特权先打成 II/VI，合取后 II 优先。
-    if is_stimecmp and v and not en.henvcfg_stce:
-        any_vi = True
-    # hcounteren.TM=0：VS 访 stimecmp（其实 vstimecmp），且 mcounteren.TM=1 → VI
-    if is_stimecmp and is_vs and not ((en.hcounteren >> 1) & 1) and ((en.mcounteren >> 1) & 1):
-        any_vi = True
-
-    # --- counteren，∀ bit（rule: mcnt_clr / scnt_op / hcnt_op）---
-    # 手册写的是「读」cycle/time/instret/hpm。写走只读条款。
-    # 地址 0xC00–0xC1F 的低 5 位就是 CY/TM/IR/HPMn 的位号，这是手册编码，
-    # 不是从 RTL 的 `counterAddr = addr(4,0)` 反推。
-    if ADDR_CYCLE <= addr <= ADDR_HPM31 and ren:
-        bit = addr & 0x1F
-        mbit = bool((en.mcounteren >> bit) & 1)
-        hbit = bool((en.hcounteren >> bit) & 1)
-        sbit = bool((en.scounteren >> bit) & 1)
-        if not is_m and not mbit:
-            any_ii = True
-        if is_hu and not sbit:
-            any_ii = True
-        if v and mbit and not hbit:
-            any_vi = True
-        if is_vu and mbit and hbit and not sbit:
-            any_vi = True
-
-    # --- TVM / VTVM / hgatp ---
-    if is_hs and en.tvm and addr in (ADDR_SATP, ADDR_HGATP):
-        any_ii = True
-    if is_vs and en.vtvm and addr == ADDR_SATP:
-        any_vi = True
-
-    # --- Smstateen（rule: st_ill + 各 bit 的 *_op；II/VI 分界见文件头）---
-    st = en.stateen
-    for i in range(4):
-        if addr in (ADDR_SSTATEEN[i], ADDR_HSTATEEN[i]) and not is_m and not st.m_se[i]:
-            any_ii = True
-        if addr == ADDR_SSTATEEN[i] and v and not st.h_se[i]:
-            any_vi = True
-    if addr in (ADDR_SENVCFG, ADDR_HENVCFG) and not is_m and not st.m_envcfg:
-        any_ii = True
-    if addr == ADDR_SENVCFG and v and not st.h_envcfg:
-        any_vi = True
-    if addr in (ADDR_SCONTEXT, ADDR_HCONTEXT) and not is_m and not st.m_context:
-        any_ii = True
-    if addr == ADDR_SCONTEXT and v and not st.h_context:
-        any_vi = True
-    if addr in (ADDR_STOPEI, ADDR_VSTOPEI) and not is_m and not st.m_imsic:
-        any_ii = True
-    if addr == ADDR_STOPEI and v and not st.h_imsic:
-        any_vi = True
-    if addr in ADDR_SIREG + ADDR_VSIREG and not is_m and not st.m_csrind:
-        any_ii = True
-    if addr in ADDR_SIREG and v and not st.h_csrind:
-        any_vi = True
-
-    if any_ii:
+    ii, vi = permit_terms(_PyOps(), prvm, v, addr, ren, wen, en)
+    if ii:
         return "II"
-    if any_vi:
+    if vi:
         return "VI"
     return "NONE"
 
@@ -496,6 +576,50 @@ def permit_smt(z3, decls: Dict) -> Tuple[object, object]:
     spec_ii = any_ii
     spec_vi = z3.And(any_vi, z3.Not(any_ii))
     return spec_ii, spec_vi
+
+
+def enables_from_decls(z3, decls: Dict) -> Enables:
+    """从与 Circuit 同名的 decls 取出 Enables，字段可以是 z3 表达式。"""
+    def st_bit(name: str):
+        return decls[f"io_in_xstateen_{name}"]
+
+    st = Stateen(
+        m_se=tuple(st_bit(p) for p in STATEEN_SE_M),
+        h_se=tuple(st_bit(p) for p in STATEEN_SE_H),
+        m_envcfg=st_bit("mstateen0_ENVCFG"),
+        h_envcfg=st_bit("hstateen0_ENVCFG"),
+        m_context=st_bit("mstateen0_CONTEXT"),
+        h_context=st_bit("hstateen0_CONTEXT"),
+        m_imsic=st_bit("mstateen0_IMSIC"),
+        h_imsic=st_bit("hstateen0_IMSIC"),
+        m_csrind=st_bit("mstateen0_CSRIND"),
+        h_csrind=st_bit("hstateen0_CSRIND"),
+    )
+    return Enables(
+        mcounteren=decls["io_in_xcounteren_mcounteren"],
+        hcounteren=decls["io_in_xcounteren_hcounteren"],
+        scounteren=decls["io_in_xcounteren_scounteren"],
+        menvcfg_stce=_bv_bit(z3, decls["io_in_xenvcfg_menvcfg"], 63),
+        henvcfg_stce=_bv_bit(z3, decls["io_in_xenvcfg_henvcfg"], 63),
+        tvm=decls["io_in_status_tvm"],
+        vtvm=decls["io_in_status_vtvm"],
+        debug_mode=decls["io_in_debugMode"],
+        stateen=st,
+    )
+
+
+def permit_as_smt(z3, decls: Dict) -> Tuple[object, object]:
+    """把 permit() 的决策体编成公式。自检用它对照 permit_smt，不另写一长串 SMT。"""
+    en = enables_from_decls(z3, decls)
+    return permit_terms(
+        _Z3Ops(z3),
+        decls["io_in_privState_PRVM"],
+        decls["io_in_privState_V"],
+        decls["io_in_csrAccess_addr"],
+        decls["io_in_csrAccess_ren"],
+        decls["io_in_csrAccess_wen"],
+        en,
+    )
 
 
 def eq_assumes() -> List[str]:
