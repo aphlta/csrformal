@@ -113,13 +113,18 @@ def _build() -> Dict[str, ModuleSpec]:
         name="TrapEntryMEventModule",
         props=trap_entry.PROPS_M,
         sources={"TrapEntryMEventModule": os.path.join(events, "TrapEntryMEvent.scala")},
-        doc="陷入 M 后各 CSR 次态（EQ：MIE/MPIE/MPP/MPV/特权/mcause；带别名假设）",
+        doc="陷入 M 后各 CSR 次态（EQ-next：SIE 族；EQ-tval：异常类 tval/tval2/GVA）",
+        mutants=[
+            Mutant("te1", "TrapEntryMEventModule",
+                   "LS guest-page-fault 的 tval2 误用 trapPcGPA 而非 memGPA",
+                   _mut("te1_TrapEntryMEvent.scala"), ["EQ-tval"]),
+        ],
     )
     specs["TrapEntryHSEventModule"] = ModuleSpec(
         name="TrapEntryHSEventModule",
         props=trap_entry.PROPS_HS,
         sources={"TrapEntryHSEventModule": os.path.join(events, "TrapEntryHSEvent.scala")},
-        doc="陷入 HS 后各 CSR 次态（EQ：SIE/SPIE/SPP/SPV/SPVP/特权/scause；别名是负载）",
+        doc="陷入 HS 后各 CSR 次态（EQ-next：SIE 族；EQ-tval：异常类 stval/htval/GVA）",
     )
     return specs
 

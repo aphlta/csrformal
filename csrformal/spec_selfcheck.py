@@ -6,7 +6,8 @@ EQ 的待证公式走 *_smt，反例解释走 Python 函数。两套实现，改
 会让「译.spec」和求解器用的规格对不上。这里不引入第三套无结构 SMT。
 
 CSRPermit：复用 permit_terms / permit_as_smt / permit_smt / eq_assumes。
-TrapEntry：复用 trap_entry_{m,hs} / trap_entry_{m,hs}_smt / eq_assumes_*。
+TrapEntry：复用 trap_entry_{m,hs} / trap_entry_{m,hs}_smt / tval_smt / eq_assumes_*。
+VS / epc 本轮不做。
 
 检查顺序
 --------
@@ -287,6 +288,16 @@ TRAP_PORT_WIDTHS: Dict[str, int] = {
     "in_hstatus_SPVP": 1,
     "in_causeNO_Interrupt": 1,
     "in_causeNO_ExceptionCode": 63,
+    "in_trapPc": 50,
+    "in_trapPcGPA": 56,
+    "in_memExceptionVAddr": 64,
+    "in_memExceptionGPAddr": 64,
+    "in_trapInst_bits": 32,
+    "in_trapInst_valid": 1,
+    "in_isCrossPageIPF": 1,
+    "in_iMode_V": 1,
+    "in_dMode_V": 1,
+    "in_isHls": 1,
 }
 for _name, _w in spec_trap_entry.SSTATUS_AS_MSTATUS:
     TRAP_PORT_WIDTHS[f"in_mstatus_{_name}"] = _w
@@ -331,7 +342,7 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
 
     assumes_m = parse_assumes(z3, decls, spec_trap_entry.eq_assumes_m())
     spec_m = spec_trap_entry.trap_entry_m_smt(z3, decls)
-    # 已知点：从 HS、MIE=1 陷入 M。
+    spec_tv = spec_trap_entry.tval_smt(z3, decls)
     s = z3.Solver()
     s.add(assumes_m)
     s.add(decls["in_privState_PRVM"] == 1)
@@ -354,6 +365,23 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
             bad += 1
         else:
             print("ok   点测：TrapEntryM HS+MIE=1 → MPIE=1,MIE=0,MPP=1,特权=M")
+
+    s = z3.Solver()
+    s.add(assumes_m)
+    s.add(z3.Not(decls["in_causeNO_Interrupt"]))
+    s.add(decls["in_causeNO_ExceptionCode"] == 21)
+    s.add(decls["in_memExceptionGPAddr"] == 0x40)
+    if s.check() != z3.sat:
+        print("FAIL 点测：LS-GPF tval2 与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        py2 = spec_trap_entry.spec_tval2(False, 21, 0, False, 0x40)
+        if m.eval(spec_tv["tval2"]).as_long() != py2:
+            print("FAIL 点测：LS-GPF tval2 Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：LS-GPF tval2 = memGPA>>2")
 
     assumes_hs = parse_assumes(z3, decls, spec_trap_entry.eq_assumes_hs())
     spec_hs = spec_trap_entry.trap_entry_hs_smt(z3, decls)
@@ -389,9 +417,14 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
         interrupt = bool(_trap_int(z3, m, decls["in_causeNO_Interrupt"]))
         code = _trap_int(z3, m, decls["in_causeNO_ExceptionCode"])
         py = spec_trap_entry.trap_entry_m(prvm, v, mie, interrupt, code)
+        cross = bool(_trap_int(z3, m, decls["in_isCrossPageIPF"]))
+        mem_gpa = _trap_int(z3, m, decls["in_memExceptionGPAddr"])
+        pc_gpa = _trap_int(z3, m, decls["in_trapPcGPA"])
+        py2 = spec_trap_entry.spec_tval2(interrupt, code, pc_gpa, cross, mem_gpa)
         if (bool(m.eval(spec_m["mpie"])) != py.mpie or
                 m.eval(spec_m["mpp"]).as_long() != py.mpp or
-                bool(m.eval(spec_m["interrupt"])) != py.interrupt):
+                bool(m.eval(spec_m["interrupt"])) != py.interrupt or
+                m.eval(spec_tv["tval2"]).as_long() != py2):
             print(f"FAIL 随机点 TrapEntryM priv={spec_trap_entry.mode_name(prvm, v)}")
             bad += 1
             break
@@ -400,6 +433,7 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
             decls["in_privState_PRVM"] != m.eval(decls["in_privState_PRVM"]),
             decls["in_mstatus_MIE"] != m.eval(decls["in_mstatus_MIE"]),
             decls["in_causeNO_ExceptionCode"] != m.eval(decls["in_causeNO_ExceptionCode"]),
+            decls["in_causeNO_Interrupt"] != m.eval(decls["in_causeNO_Interrupt"]),
         ))
     print(f"{'ok' if bad == 0 else 'FAIL'}   随机点：TrapEntryM 比对 {compared} 个具体化模型")
     return bad

@@ -2,8 +2,19 @@
   "spec_repo": "riscv/riscv-isa-manual",
   "commit": "a5be4cfb5aa9d4d325e43e066ce4aa0713b4a5c7",
   "commit_date": "2026-09-02T08:15:50Z",
-  "rule_count": 65,
+  "rule_count": 80,
   "rules": {
+    "norm:H_cause": {
+      "rule_id": "norm:H_cause",
+      "file": "priv/hypervisor.adoc",
+      "line": 2179,
+      "sha256": "0680e7dfd3f1397d",
+      "text": "The hypervisor extension augments the trap cause encoding.\n<<hcauses>> lists the possible M-mode and HS-mode\ntrap cause codes when the hypervisor extension is implemented. Codes are\nadded for VS-level interrupts (interrupts 2, 6, 10), for\nsupervisor-level guest external interrupts (interrupt 12), for\nvirtual-instruction exceptions (exception 22), and for guest-page faults\n(exceptions 20, 21, 23). Furthermore, environment calls from VS-mode are\nassigned cause 10, whereas those from HS-mode or S-mode use cause 9 as\nusual.",
+      "properties": [
+        "TrapEntryHS/EQ-tval",
+        "TrapEntryM/EQ-tval"
+      ]
+    },
     "norm:H_cause_virtual_instruction": {
       "rule_id": "norm:H_cause_virtual_instruction",
       "file": "priv/hypervisor.adoc",
@@ -52,6 +63,17 @@
       "text": "in VS-mode or VU-mode, attempts to access an implemented non-high-half\nhypervisor CSR or VS CSR when the same access (read/write) would be\nallowed in HS-mode, assuming `mstatus`.TVM=0;",
       "properties": [
         "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:H_virtinst_xtval": {
+      "rule_id": "norm:H_virtinst_xtval",
+      "file": "priv/hypervisor.adoc",
+      "line": 2415,
+      "sha256": "6fa7c1da02eb91d9",
+      "text": "On a virtual-instruction trap, `mtval` or `stval` is written the same as\nfor an illegal-instruction trap.",
+      "properties": [
+        "TrapEntryHS/EQ-tval",
+        "TrapEntryM/EQ-tval"
       ]
     },
     "norm:Zicsr_access": {
@@ -362,6 +384,16 @@
         "CSRPermit/EQ-permit"
       ]
     },
+    "norm:hstatus_gva_op": {
+      "rule_id": "norm:hstatus_gva_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 322,
+      "sha256": "ab74e41605799aa0",
+      "text": "Field GVA (Guest Virtual Address) is written by the implementation\nwhenever a trap is taken into HS-mode. For any trap (breakpoint, address\nmisaligned, access fault, page fault, or guest-page fault) that writes a\nguest virtual address to `stval`, GVA is set to 1. For any other trap\ninto HS-mode, GVA is set to 0.",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
+      ]
+    },
     "norm:hstatus_spvp_op": {
       "rule_id": "norm:hstatus_spvp_op",
       "file": "priv/hypervisor.adoc",
@@ -396,6 +428,16 @@
         "CSRPermit/EQ-permit",
         "CSRPermit/T3",
         "CSRPermit/T6"
+      ]
+    },
+    "norm:htval_trapval": {
+      "rule_id": "norm:htval_trapval",
+      "file": "priv/hypervisor.adoc",
+      "line": 916,
+      "sha256": "6a73ef6bd015a5b9",
+      "text": "When a guest-page-fault trap is taken into HS-mode, csr:htval[] is written\nwith either zero or the guest physical address that faulted, shifted\nright by qty:2[bits]. For other traps, csr:htval[] is set to zero, but a future\nstandard or extension may redefine csr:htval[]'s setting for other traps.",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
       ]
     },
     "norm:mcause_intr_op": {
@@ -650,6 +692,16 @@
         "CSRPermit/EQ-permit"
       ]
     },
+    "norm:mstatus_gva_op": {
+      "rule_id": "norm:mstatus_gva_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 1695,
+      "sha256": "d54273395cd22b70",
+      "text": "Field GVA (Guest Virtual Address) is written by the implementation\nwhenever a trap is taken into M-mode. For any trap (breakpoint, address\nmisaligned, access fault, page fault, or guest-page fault) that writes a\nguest virtual address to `mtval`, GVA is set to 1. For any other trap\ninto M-mode, GVA is set to 0.",
+      "properties": [
+        "TrapEntryM/EQ-tval"
+      ]
+    },
     "norm:mstatus_mpv_op": {
       "rule_id": "norm:mstatus_mpv_op",
       "file": "priv/hypervisor.adoc",
@@ -682,6 +734,56 @@
       "properties": [
         "TrapEntryHS/EQ-next",
         "TrapEntryM/EQ-next"
+      ]
+    },
+    "norm:mtval2_trapval": {
+      "rule_id": "norm:mtval2_trapval",
+      "file": "priv/hypervisor.adoc",
+      "line": 1829,
+      "sha256": "707bfa39791ae374",
+      "text": "When a guest-page-fault trap is taken into M-mode, csr:mtval2[] is written\nwith either zero or the guest physical address that faulted, shifted\nright by qty:2[bits]. For other traps, csr:mtval2[] is set to zero, but a future\nstandard or extension may redefine csr:mtval2[]'s setting for other traps.",
+      "properties": [
+        "TrapEntryM/EQ-tval"
+      ]
+    },
+    "norm:mtval_ill_instr_exc_in_low_bits": {
+      "rule_id": "norm:mtval_ill_instr_exc_in_low_bits",
+      "file": "priv/machine.adoc",
+      "line": 2047,
+      "sha256": "2276291a4d1ca6be",
+      "text": "The value loaded into `mtval` on an illegal-instruction exception is\nright-justified and all unused upper bits are cleared to zero.",
+      "properties": [
+        "TrapEntryM/EQ-tval"
+      ]
+    },
+    "norm:mtval_other_traps_zero": {
+      "rule_id": "norm:mtval_other_traps_zero",
+      "file": "priv/machine.adoc",
+      "line": 2081,
+      "sha256": "ca90b8e7c5124a88",
+      "text": "For other traps, `mtval` is set to zero",
+      "properties": [
+        "TrapEntryM/EQ-tval"
+      ]
+    },
+    "norm:mtval_vaddr_wr1": {
+      "rule_id": "norm:mtval_vaddr_wr1",
+      "file": "priv/machine.adoc",
+      "line": 2002,
+      "sha256": "3ec3363668459c4e",
+      "text": "If `mtval` is written with a nonzero value when a breakpoint,\naddress-misaligned, access-fault, page-fault, or hardware-error exception\noccurs on an instruction fetch, load, or store, then `mtval` will contain the\nfaulting virtual address.",
+      "properties": [
+        "TrapEntryM/EQ-tval"
+      ]
+    },
+    "norm:mtval_varlen_wr": {
+      "rule_id": "norm:mtval_varlen_wr",
+      "file": "priv/machine.adoc",
+      "line": 2028,
+      "sha256": "4b80e82f883967cd",
+      "text": "If `mtval` is written with a nonzero value when an instruction\naccess-fault, page-fault, or hardware-error exception occurs on a hart with\nvariable-length instructions, then `mtval` will contain the virtual\naddress of the portion of the instruction that caused the fault",
+      "properties": [
+        "TrapEntryM/EQ-tval"
       ]
     },
     "norm:mtvec_mode_vectored_op": {
@@ -880,6 +982,57 @@
       "text": "The `stateen` registers at each level control access to state at all\nless-privileged levels, but not at its own level.",
       "properties": [
         "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:stval_op_breakpoint": {
+      "rule_id": "norm:stval_op_breakpoint",
+      "file": "priv/supervisor.adoc",
+      "line": 727,
+      "sha256": "4449c25fd31fd9e3",
+      "text": "On a breakpoint exception raised by an EBREAK or C.EBREAK instruction, `stval`\nis written with either zero or the virtual address of the instruction.",
+      "properties": [
+        "TrapEntryHS/EQ-tval",
+        "TrapEntryM/EQ-tval"
+      ]
+    },
+    "norm:stval_op_faulting_addr": {
+      "rule_id": "norm:stval_op_faulting_addr",
+      "file": "priv/supervisor.adoc",
+      "line": 720,
+      "sha256": "4f34dbe14fa3ab81",
+      "text": "If `stval` is written with a nonzero value when a breakpoint,\naddress-misaligned, access-fault, page-fault, or hardware-error exception\noccurs on an\ninstruction fetch, load, or store, then `stval` will contain the\nfaulting virtual address.",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
+      ]
+    },
+    "norm:stval_op_illegal_instr": {
+      "rule_id": "norm:stval_op_illegal_instr",
+      "file": "priv/supervisor.adoc",
+      "line": 749,
+      "sha256": "33d2af32c0eb9b9c",
+      "text": "The `stval` register can optionally also be used to return the faulting\ninstruction bits on an illegal-instruction exception (`sepc` points to\nthe faulting instruction in memory). If `stval` is written with a\nnonzero value when an illegal-instruction exception occurs, then `stval`\nwill contain the shortest of:",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
+      ]
+    },
+    "norm:stval_op_load_store_fault": {
+      "rule_id": "norm:stval_op_load_store_fault",
+      "file": "priv/supervisor.adoc",
+      "line": 735,
+      "sha256": "6f54993785975b92",
+      "text": "If `stval` is written with a nonzero value when a misaligned load or\nstore causes an access-fault, page-fault, or hardware-error exception,\nthen `stval` will\ncontain the virtual address of the portion of the access that caused the\nfault.",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
+      ]
+    },
+    "norm:stval_op_other_traps": {
+      "rule_id": "norm:stval_op_other_traps",
+      "file": "priv/supervisor.adoc",
+      "line": 772,
+      "sha256": "6095b123edb9457f",
+      "text": "For other traps, `stval` is set to zero, but a future standard may\nredefine `stval`’s setting for other traps.",
+      "properties": [
+        "TrapEntryHS/EQ-tval"
       ]
     },
     "norm:trap_unexp_hndl_no_rnmi": {

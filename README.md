@@ -29,6 +29,10 @@ SMT 在假设允许的自由位上穷尽，不是在全输入空间上证明整�
 
 ## 安装
 
+**仅 Linux。** 不支持 Windows（SMT2 缓存用 `fcntl` 文件锁）。请在 Linux
+主机或 Docker 里跑；启动时若没有 `fcntl` 会直接报「需要 Linux」，
+本仓库不为 Windows 重写流水线。
+
 ### 外部工具（不由本仓库安装）
 
 | 工具 | 版本 | 用途 | 环境变量（未设则找 PATH） |
@@ -36,7 +40,7 @@ SMT 在假设允许的自由位上穷尽，不是在全输入空间上证明整�
 | yosys | 0.68 | SystemVerilog → SMT2 | `CSRFORMAL_YOSYS` |
 | firtool | 1.135.0 | CHIRRTL → SystemVerilog | `CSRFORMAL_FIRTOOL` |
 | JDK + Scala 2.13 编译器 | 与 XiangShan 一致 | 精化 harness | `CSRFORMAL_JAVA` |
-| `gh` | 任意 | 解析规范仓库分支名（钉死 sha 时只需 `curl` 拉 tarball） | — |
+| `gh` | 任意 | 解析规范仓库分支名（钉死 sha 时只需 `curl` 拉 tarball） | —（**Docker 镜像不装**；`demo-spec-drift.sh` 对照 `main` 请在宿主机跑，或传入 40 位 sha） |
 
 版本与获取方式见 `scripts/versions.txt`。本仓库不安装这些外部工具。
 
@@ -106,21 +110,23 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 
 - `out/reports/compliance.md` —— 人可读的符合性报告（摘要 / 规则追溯表 / 反例详情 / 全量清单）
 - `out/reports/compliance.json` —— 结构化结果，逐条给出结论、耗时、规则 id、反例取值
-- `out/<tag>/m.sv`、`out/<tag>/c.smt2` —— 中间产物，可直接拿去手工调试
+- `out/<tag>/<rtl_id>/m.sv`、`c.smt2` —— 中间产物；`<rtl_id>` 是树路径 / commit / 关键 `.scala` 的指纹。换 `CSRFORMAL_XS_TREE` 或 commit 会自动换目录，不靠 `--rebuild`。
 
-退出码：有反例 / 真空 / 错误时为 1，全通过为 0。
+退出码：反例 / 真空 / 未知 / 错误 → 1；全部 HOLDS 为 0。
+`--review` 若匹配到 0 条性质，拒绝当作通过（退出 1）。
 
 ### 登记规模（`XiangShan-b90dbba` @ `b90dbba4`）
 
 - `CSRPermitModule` 156 条（case + 3 条 MONO + 1 条 EQ）
 - `TrapHandleModule` 140 条
-- `TrapEntryMEventModule` / `TrapEntryHSEventModule` 各 1 条 EQ
-  （陷入次态；sstatus 是 mstatus 视图的别名假设）
+- `TrapEntryMEventModule` / `TrapEntryHSEventModule` 各 2 条 EQ
+  （EQ-next：SIE/PP/cause；EQ-tval：按异常类的 tval/tval2/GVA。
+  epc / VS 后置，未验收。BP/SWC/HWE 的精确 tval 排除）
 - `TrapEntryDEventModule` 精化后 registers≠0，跳过，不假装时序完整
 - 当前红的是 `CSRPermit/S3` 与 `CSRPermit/EQ-permit`，反例都是
   `vstimecmp` + `menvcfg.STCE=0` 一类。EQ 绿只表示「已建模条款 + 假设关掉的路径」
   下 RTL 与规格一致，不等于符合整本规范。
-- 精化有缓存，单条 `--only` 是秒级。不要无故 `--rebuild`。
+- 精化缓存键含 RTL 树身份。不要无故 `--rebuild`。
 
 ## 规范漂移 demo
 
@@ -133,11 +139,12 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 | 时间 | 事件 |
 |---|---|
 | 2025-12-16 | `riscv-isa-manual` PR #2504（纯文本搬运）误删了 `norm:menvcfg_stce_op2` 里的 “or `vstimecmp`” |
-| 2026-06-24 | XiangShan PR #6129 与 NEMU PR #1093（同一作者，相隔 22 分钟）照着被删后的文本改了实现 |
+| 2026-06-24 | 提交 `94a4b91a` 按被删后的文本去掉 `vstimecmp` 门控，经 XiangShan PR #6243 进入 v3。PR #6129 Closed 未 merge（与 NEMU PR #1093 同时段提出，不是进树路径） |
 | 2026-08-20 | `riscv-isa-manual` issue #3329 指出这是编辑事故 |
 | 2026-08-24 | PR #3344 恢复原文，当前 main 已是恢复后的文本 |
 
-结果是照着规范改的实现被规范勘误反转。demo 把一份旁路基线固定在 2026-06-14
+结果是 `94a4b91a` 按当时规范文本改的实现，被后来的规范勘误反转
+（pc1 回滚的就是这份提交，不是未 merge 的 #6129）。demo 把一份旁路基线固定在 2026-06-14
 （`f20aa35`，误删文本；不是 EQ 权威），再与当前 main 比对。权威基线
 `spec/baseline.json` 钉在恢复后的原文（含 `or vstimecmp`），
 `spec-baseline` 默认不会把权威文件拧回误删版。
@@ -167,7 +174,8 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 ./bin/csrformal self-test --report out/reports/self-test.md
 ```
 
-10 个变体，10/10 行为符合预期，约 77 s（每个变体要单独 scalac 覆盖编译 + 重新精化）：
+11 个变体。前 10 个约 77 s、行为符合预期；本轮 `te1` 独立验证，KILLED by `TrapEntryM/EQ-tval`
+（每个变体要单独 scalac 覆盖编译 + 重新精化）：
 
 | 变体 | 类型 | 内容 | 结果 |
 |---|---|---|---|
@@ -181,6 +189,7 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 | `t3` | defect | `handleTrapUnderHS` 去掉 `!isModeM` | KILLED by `D6` ×9 |
 | `t5` | defect | `trapToHS` 去掉 `!vs_EX_DT` | KILLED by `DT2` |
 | `pc3` | defect | 回滚 `74fd4f59`：VS 向量化入口 PC 用未映射的中断号 | KILLED by `V3` ×3 |
+| `te1` | defect | LS-GPF 的 `mtval2` 误用 `trapPCGPA` 而非 `trapMemGPA` | KILLED by `TrapEntryM/EQ-tval` |
 
 `pc1` 上一轮的类型是 defect（历史 bug 重放的阳性对照），依据是当时被误删了 “or vstimecmp”
 的规范文本。规范恢复后该实现变成正确实现，因此改判为 fix 对照，职责是断言 F1 的建议改法
@@ -208,7 +217,7 @@ csrformal/
     __init__.py            模块注册表（性质 + 源文件 + 变异体）
     csr_permit.py          CSRPermitModule 156 条（case + MONO + EQ）
     trap_handle.py         TrapHandleModule 的 140 条性质
-    trap_entry.py          TrapEntry{M,HS}EventModule 的 EQ-next
+    trap_entry.py          TrapEntry{M,HS} 的 EQ-next 与 EQ-tval
 src/eqcheck/Elab2.scala    最小精化 harness（把单个子模块当 top）
 mutants-src/               变异体源码（base_* 与各变异版本）
 spec/baseline.json         权威基线：恢复后的被引用规则原文
@@ -325,7 +334,7 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 4. 未覆盖的模块：`InterruptFilter`（由另一项工作进行中）、`XRetPermitModule`
    （MRET/SRET/DRET/MNRET，与 debug 规范耦合）、`MStatusModule`、`MipModule`、
    `TrapEntryDEventModule`（registers≠0，跳过）、`TrapEntryVS`/`MN` 的 EQ
-   （本轮只移植了 M/HS）。
+   （VS/epc 后置，本轮未验收）。
 5. 未覆盖的条款：异常优先级表（规范把若干异常放在同一优先级组、组内无序，
    且把 load/store 地址不对齐相对页错误定为实现自定义，香山的差异落在规范
    未约束的自由度内）、AIA iprio 窗口的奇偶规则、fp/vec 的 `mstatus.FS/VS`、
@@ -336,8 +345,11 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
 9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
    以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款靠假设关掉。
-   `TrapEntryM/EQ-next` 与 `TrapEntryHS/EQ-next` 同样是带假设的局部等价：
-   只比手册赋值句点名的次态字段，tval/mepc/NMI/debug/DT/MDT/SDT 关掉。
+   `TrapEntryM/EQ-next` 与 `TrapEntryHS/EQ-next` 只比 SIE/PP/cause。
+   `EQ-tval` 按异常类写了 PC/PC+2/memVA/inst/GPA；prove 只比
+   tval2（LS-GPF=GPA>>2，非 GPF=0）和 GVA（GPF=1，中断/ecall=0）。
+   精确 tval 不进 prove（否则要抄 genTrapVA 或钉 fetchMalAddr）。
+   BP（0 或 PC）、SWC、HWE、IGPF 的 tval2 排除。epc / VS 后置，未验收。
    EQ 绿 ≠ 符合整本规范。假设太松会被无关条款打红，应收紧假设或扩规格，
    不要抄比较器凑绿。
 
@@ -352,7 +364,9 @@ GitHub Actions 和 Dockerfile 只覆盖这一层。
 firtool / JDK。换机器做不到一键复现；CI **不**跑 `check CSRPermitModule`。
 
 `Dockerfile` 装 Python 与 `z3-solver`，并提示外部工具。镜像里通常没有
-firtool 1.135.0 / yosys 0.68；精化请用宿主机或 xs-env。此镜像未当作
+firtool 1.135.0 / yosys 0.68，也**不装 `gh`**（避免镜像膨胀）。
+`demo-spec-drift.sh` 默认对照 `main` 时需要宿主机 `gh`；也可传入 40 位 sha。
+缺 `gh` 时脚本会直接失败并说明原因。精化请用宿主机或 xs-env。此镜像未当作
 「已验证可复现精化」的证据。
 
 ## 相关工作
