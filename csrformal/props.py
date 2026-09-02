@@ -12,9 +12,12 @@
    由 `csrformal lint` 强制检查，不允许留空。
 3. **kind**：`single` 用单实例求解（spec.py 路线），
    `relational` 开 A/B 两份实例证跨实例关系（spec2.py 路线）。
+4. **prove_fn**（可选）：主定理这类「规格函数 ↔ RTL」不宜再写成一长串
+   SMT-LIB 字符串。给出 `prove_fn(circuit) -> z3.BoolRef` 时，runner
+   用这份公式代替 `prove` 字符串；现有 case 的求解路径不变。
 """
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 
 @dataclass(frozen=True)
@@ -44,7 +47,16 @@ class Property:
     kind: str = "single"          # single | relational
     free: List[str] = field(default_factory=list)   # relational: 允许 A/B 不同的输入
     tags: List[str] = field(default_factory=list)
+    # 可选：用 z3 AST 当待证公式。现有 case 不设此项，仍走 prove 字符串。
+    prove_fn: Optional[Callable] = None
+    # 合取型主定理的各条款出处。lint / spec-drift 会把这里的 rule_id
+    # 和 ref.rule_id 一起收入 referenced_rules；不要把条款塞进一个假 id。
+    extra_refs: List[SpecRef] = field(default_factory=list)
+    # 可选：把反例模型译成可读字段（addr、特权态、STCE…）。
+    explain_fn: Optional[Callable] = None
 
     def __post_init__(self):
         if self.ref.rule_id is None and not self.ref.note:
             raise ValueError(f"{self.pid}: 无 rule_id 的性质必须写 note 说明出处")
+        if self.prove_fn is None and not self.prove:
+            raise ValueError(f"{self.pid}: 必须给 prove 字符串或 prove_fn")

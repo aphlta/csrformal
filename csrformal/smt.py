@@ -157,18 +157,23 @@ class Circuit:
             return self._expr(texts[0])
         return self._expr("(and " + " ".join(texts) + ")")
 
-    def check(self, assumes: List[str], prove: str,
+    def check(self, assumes: List[str], prove,
               want_model: bool = True) -> Tuple[str, float, Dict[str, object]]:
         """返回 (结论, 耗时秒, 反例模型)。
 
         结论：HOLDS（unsat，即在假设下性质恒真）/ VIOLATED（sat，给出反例）
               / UNKNOWN。
+
+        `prove` 可以是 SMT-LIB 字符串（现有 case），也可以是已经绑到
+        本电路 `decls` 上的 z3.BoolRef（等价性主定理）。不要为后一种
+        再 parse 一遍，符号表对不上会 silently 建出另一套常量。
         """
         z3 = self.z3
         self.solver.push()
         try:
             self.solver.add(self._conj(assumes))
-            self.solver.add(z3.Not(self._expr(prove)))
+            prove_e = prove if not isinstance(prove, str) else self._expr(prove)
+            self.solver.add(z3.Not(prove_e))
             t0 = time.time()
             r = self.solver.check()
             dt = time.time() - t0

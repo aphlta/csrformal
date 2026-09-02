@@ -64,7 +64,7 @@ def _build() -> Dict[str, ModuleSpec]:
         name="CSRPermitModule",
         props=csr_permit.PROPS,
         sources={"CSRPermitModule": os.path.join(NEWCSR, "CSRPermitModule.scala")},
-        doc="CSR 访问权限判定（II / VI 的唯一来源）",
+        doc="CSR 访问权限判定（II / VI 的唯一来源；case 层 + 等价性层）",
         mutants=[
             # pc1 = 回滚 XiangShan 94a4b91a（PR #6129），即恢复 menvcfg.STCE
             # 对 vstimecmp 的门控。上一轮把它当「历史 bug 重放」做阳性对照，
@@ -74,10 +74,10 @@ def _build() -> Dict[str, ModuleSpec]:
             Mutant("pc1", "CSRPermitModule",
                    "回滚 94a4b91a（= F1 的建议改法）：恢复 menvcfg.STCE 对 vstimecmp 的门控",
                    _mut("pc1_CSRPermitModule.scala"),
-                   kind="fix", expect_fix=["S3"]),
+                   kind="fix", expect_fix=["S3", "EQ"]),
             Mutant("m1", "CSRPermitModule",
                    "mcounteren.TM 不再门控 vstimecmp",
-                   _mut("m1_CSRPermitModule.scala"), ["S1b"]),
+                   _mut("m1_CSRPermitModule.scala"), ["S1b", "EQ"]),
             Mutant("m2", "CSRPermitModule",
                    "去掉 HU 态的 scounteren 检查",
                    _mut("m2_CSRPermitModule.scala"), ["C2"]),

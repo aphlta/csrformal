@@ -2,8 +2,38 @@
   "spec_repo": "riscv/riscv-isa-manual",
   "commit": "f20aa35ff0890991f8213a667658c7768f581bd1",
   "commit_date": "2026-06-14T01:04:33Z",
-  "rule_count": 43,
+  "rule_count": 51,
   "rules": {
+    "norm:H_cause_virtual_instruction": {
+      "rule_id": "norm:H_cause_virtual_instruction",
+      "file": "priv/hypervisor.adoc",
+      "line": 2323,
+      "sha256": "be2eea842ea2f938",
+      "text": "When V=1, a virtual-instruction exception (code 22) is normally raised\ninstead of an illegal-instruction exception if the attempted instruction\nis _HS-qualified_ but is prevented from executing when V=1 either due to\ninsufficient privilege or because the instruction is expressly disabled\nby a supervisor or hypervisor CSR such as `scounteren` or `hcounteren`.\nAn instruction is _HS-qualified_ if it would be valid to execute in\nHS-mode (for some values of the instruction's register operands),\nassuming fields TSR and TVM of CSR `mstatus` are both zero.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:H_virtinst_vu_nonhigh_supervisor_allowedhs_tvm0": {
+      "rule_id": "norm:H_virtinst_vu_nonhigh_supervisor_allowedhs_tvm0",
+      "file": "priv/hypervisor.adoc",
+      "line": 2383,
+      "sha256": "b356f07b8f82ea60",
+      "text": "in VU-mode, attempts to access an implemented non-high-half supervisor\nCSR when the same access (read/write) would be allowed in HS-mode,\nassuming `mstatus`.TVM=0;",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:H_virtinst_vu_vs_nonhigh_allowedhs_tvm0": {
+      "rule_id": "norm:H_virtinst_vu_vs_nonhigh_allowedhs_tvm0",
+      "file": "priv/hypervisor.adoc",
+      "line": 2370,
+      "sha256": "94cfc5e933a346e8",
+      "text": "in VS-mode or VU-mode, attempts to access an implemented non-high-half\nhypervisor CSR or VS CSR when the same access (read/write) would be\nallowed in HS-mode, assuming `mstatus`.TVM=0;",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
     "norm:Zicsr_access": {
       "rule_id": "norm:Zicsr_access",
       "file": "priv/csrs.adoc",
@@ -15,6 +45,56 @@
         "CSRPermit/R1[cycleh]",
         "CSRPermit/R1[mvendorid]",
         "CSRPermit/R1[stopi]"
+      ]
+    },
+    "norm:Zicsr_debug_illegal": {
+      "rule_id": "norm:Zicsr_debug_illegal",
+      "file": "priv/csrs.adoc",
+      "line": 62,
+      "sha256": "0f288268a01e55ec",
+      "text": "`0x7B0`{endash}``0x7BF`` are only visible to debug mode.\nImplementations should raise illegal-instruction exceptions on\nmachine-mode access to the latter set of registers.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:Zicsr_higher_priv": {
+      "rule_id": "norm:Zicsr_higher_priv",
+      "file": "priv/csrs.adoc",
+      "line": 19,
+      "sha256": "38925a02f4bfb281",
+      "text": "although CSRs and instructions are associated with one privilege\nlevel, they are also accessible at all higher privilege levels.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:Zicsr_illegal_acc": {
+      "rule_id": "norm:Zicsr_illegal_acc",
+      "file": "priv/csrs.adoc",
+      "line": 50,
+      "sha256": "d55ad9962aa8ab15",
+      "text": "Attempts to write a read-only register raise illegal-instruction exceptions.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:Zicsr_illegal_mode": {
+      "rule_id": "norm:Zicsr_illegal_mode",
+      "file": "priv/csrs.adoc",
+      "line": 47,
+      "sha256": "991a5501c9c76ff3",
+      "text": "Attempts to access a CSR without appropriate privilege level\nraise illegal-instruction exceptions or, as described in\n<<sec:hcauses>>, virtual-instruction exceptions.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:Zicsr_rw": {
+      "rule_id": "norm:Zicsr_rw",
+      "file": "priv/csrs.adoc",
+      "line": 30,
+      "sha256": "c5a32152c4351efe",
+      "text": "The top two bits (csr[11:10]) indicate whether the register is read/write (`00`,`01`, or `10`) or read-only (`11`).",
+      "properties": [
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hcounteren_acc": {

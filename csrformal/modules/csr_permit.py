@@ -3,8 +3,16 @@
 被测模块：`XiangShan/src/main/scala/xiangshan/backend/fu/NewCSR/CSRPermitModule.scala`
 输出：`io.out.EX_II`（illegal instruction）/ `io.out.EX_VI`（virtual instruction）。
 
-写法约定
+两层性质
 --------
+* case 层：钉死特权 / 地址 / r/w，再用 `clean()` 关掉其它陷入源。
+  这是选点回归，不是「permit ≡ 规范」。
+* 等价性层：`CSRPermit/EQ-permit` 用独立规格函数对照 RTL 全输入
+  （已覆盖使能位自由，未覆盖路径按假设关掉）。规格在 `spec_permit.py`，
+  禁止把本文件或 Chisel 比较器翻译进规格。
+
+写法约定（case 层）
+------------------
 每条性质用 `CLEAN`（见 `clean()`）把**所有其它陷入源**关掉，只翻转被测的那一位。
 这样一来「抛了 II」就只可能来自被测条款，而不是别的条款顺带抛的。
 
@@ -13,6 +21,7 @@
 这正是上一轮 30+ 条假通过的根因，所以 `clean()` 接受掩码参数，
 并由 runner 的真空性门禁兜底。
 """
+from .. import spec_permit
 from ..props import Property, SpecRef
 
 MODULE = "CSRPermitModule"
@@ -303,3 +312,22 @@ for pid, (ap, av), (bp, bv), desc in [
         ],
         prove='(=> (or A_io_out_EX_II A_io_out_EX_VI) (or B_io_out_EX_II B_io_out_EX_VI))',
         ref=R["mono"], tags=["MONO"]))
+
+# ---------------------------------------------------- 等价性主定理
+# 不走 case()：地址 / 特权 / ren/wen / 已建模 enable 全部自由。
+# prove 字符串只给人看；真正求解的是 prove_fn 里绑到同一套 decls 的 z3 公式。
+PROPS.append(Property(
+    pid="CSRPermit/EQ-permit",
+    title="已覆盖条款下 RTL.EX_II/EX_VI ≡ spec.permit（地址×特权×使能位自由）",
+    module=MODULE,
+    assumes=spec_permit.eq_assumes(),
+    prove="(and (= io_out_EX_II spec.II) (= io_out_EX_VI spec.VI))",
+    prove_fn=spec_permit.eq_prove,
+    explain_fn=spec_permit.explain_eq_model,
+    extra_refs=spec_permit.CLAUSE_REFS,
+    ref=SpecRef(None, "CSRPermit 等价性主定理（多条款合取）",
+                "主定理是 Privilege + 只读写 + Sstc + counteren + TVM 的合取，"
+                "不是单条 norm: 条文。各条款 rule_id 见 extra_refs；"
+                "Sstc 按恢复后的 norm:menvcfg_stce_op2（stimecmp 或 vstimecmp）。"
+                "不要给合取硬凑一个 id。"),
+    tags=["EQ"]))

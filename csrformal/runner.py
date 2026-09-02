@@ -83,7 +83,8 @@ class ModuleRunner:
             if not sat:
                 return Result(p, VACUOUS, vacuity_seconds=vdt,
                               message="假设集不可满足：该性质是真空成立，未验证任何东西")
-            status, dt, model = c.check(asm, p.prove)
+            prove = p.prove_fn(c) if p.prove_fn is not None else p.prove
+            status, dt, model = c.check(asm, prove)
             r = Result(p, status, seconds=dt, vacuity_seconds=vdt)
             if status == VIOLATED:
                 pfx = ["A_", "B_"] if p.kind == "relational" else [""]
@@ -101,6 +102,10 @@ class ModuleRunner:
                         v = model.get(q + n)
                         if v is not None:
                             r.outputs[q + n] = smt.fmt_value(v)
+                # 等价性反例里 STCE=0 正好是「默认值」，会被上面滤掉；
+                # explain_fn 把 addr / 特权 / STCE / 两侧判决译成可读字段。
+                if p.explain_fn is not None:
+                    r.counterexample = {**p.explain_fn(model, c), **r.counterexample}
             return r
         except SystemExit:
             raise

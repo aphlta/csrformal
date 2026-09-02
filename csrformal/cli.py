@@ -108,11 +108,17 @@ def cmd_list(args):
 
 
 def referenced_rules():
-    """rule_id → 引用它的性质 pid 列表。"""
+    """rule_id → 引用它的性质 pid 列表。
+
+    合取型主定理的条款写在 extra_refs 里，必须一并收入，否则
+    spec-drift 会漏掉等价性层真正依赖的段落。
+    """
     out = {}
     for p in modules.all_properties():
-        if p.ref.rule_id:
-            out.setdefault(p.ref.rule_id, []).append(p.pid)
+        refs = [p.ref, *list(p.extra_refs or [])]
+        for ref in refs:
+            if ref.rule_id:
+                out.setdefault(ref.rule_id, []).append(p.pid)
     return out
 
 

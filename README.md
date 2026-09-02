@@ -40,7 +40,7 @@ pip install -r requirements.txt        # 只有 z3-solver
 
 `cp.txt` 是一份已编译好的 XiangShan classpath（74 条，指向 `XiangShan-b90dbba/out/*`
 与 coursier 缓存），有了它不必跑 mill 全量编译，精化只需秒级。
-换机器时改 `csrformal/config.py` 里的 `XS_TREE` 与 `cp.txt`，或设 `CSRFORMAL_XS_TREE`。`cp.txt` 需按本机 XiangShan 树自行生成，不进仓库。
+换机器时改 `csrformal/config.py` 里的 `XS_TREE` 与 `cp.txt`，或设 `CSRFORMAL_XS_TREE`。
 
 ## 怎么跑
 
@@ -163,7 +163,8 @@ bin/csrformal              入口（bash → csrformal.cli）
 bin/demo-spec-drift.sh     规范漂移自证 demo
 csrformal/
   config.py                路径与外部工具配置（环境变量可覆盖）
-  props.py                 Property / SpecRef 数据模型
+  props.py                 Property / SpecRef 数据模型（含可选 prove_fn）
+  spec_permit.py           CSRPermit 独立规格函数（等价性层；禁止抄 Chisel）
   specdb.py                规范规则库：adoc 锚点提取、原文哈希、基线、漂移比对
   elaborate.py             Chisel → CHIRRTL → SystemVerilog（含覆盖编译的硬校验）
   smt.py                   SV → SMT2 → z3（电路只 parse 一次，性质用 push/pop）
@@ -172,7 +173,7 @@ csrformal/
   cli.py                   子命令
   modules/
     __init__.py            模块注册表（性质 + 源文件 + 变异体）
-    csr_permit.py          CSRPermitModule 的 155 条性质
+    csr_permit.py          CSRPermitModule 的 155 条 case + 3 条 MONO + 1 条 EQ
     trap_handle.py         TrapHandleModule 的 140 条性质
 src/eqcheck/Elab2.scala    最小精化 harness（把单个子模块当 top）
 mutants-src/               变异体源码（base_* 与各变异版本）
@@ -231,6 +232,15 @@ case("S9",                                        # pid（模块内唯一）
 关系型性质（跨两份实例，例如特权单调性）直接构造 `Property(kind="relational", free=[...])`，
 `free` 里列出允许 A/B 取不同值的输入端口，其余输入由 runner 自动对齐。
 
+等价性层和 case 层不是互相替换。case 钉死特权、地址、r/w，再用 `clean()` 关掉其它陷入源，
+SMT 只穷尽剩余自由位，职责是选点回归。等价性层（`CSRPermit/EQ-permit`）用独立规格函数
+`spec_permit.permit`，在「已建模使能位自由、未覆盖路径按假设关掉」下证
+`(rtl.EX_II ↔ spec.II) ∧ (rtl.EX_VI ↔ spec.VI)`；地址、特权、ren/wen 全部自由，不再钉 0x14D。
+规格只来自特权规范 / SpecRef，禁止把 RTL 比较器翻译进去。本轮没写进规格的条款
+（XRet、FS/VS off、AIA 其余、Smstateen、Smcdeleg、custom、scountinhibit/scountovf）
+必须写成可满足的假设关掉，否则会被无关路径打红。合取型主定理用 `prove_fn` 出 z3 公式，
+条款的 `rule_id` 放 `extra_refs`，不要给合取硬凑一个 id。
+
 ## 怎么加一个新模块
 
 以 `InterruptFilter` 为例，四步：
@@ -283,6 +293,9 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 7. 多参照交叉检查未实现，只留了接口与设计说明（`docs/spike-crosscheck.md`）。
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
    覆盖率缺口需要人来判断。
+9. `CSRPermit/EQ-permit` 只覆盖 Privilege、只读写、Sstc、counteren、TVM。
+   未覆盖条款靠假设关掉，不是用 RTL 行为填进规格。假设太松会被无关条款打红，
+   应收紧假设或扩规格，不要抄比较器凑绿。
 
 ## 参考
 
