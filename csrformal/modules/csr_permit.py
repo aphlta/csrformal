@@ -326,8 +326,9 @@ PROPS.append(Property(
     explain_fn=spec_permit.explain_eq_model,
     extra_refs=spec_permit.CLAUSE_REFS,
     ref=SpecRef(None, "CSRPermit 等价性主定理（多条款合取）",
-                "主定理是 Privilege + 只读写 + Sstc + counteren + TVM 的合取，"
-                "不是单条 norm: 条文。各条款 rule_id 见 extra_refs；"
+                "主定理是 Privilege + 只读写 + Sstc + counteren + TVM + Smstateen"
+                "（SE/ENVCFG/CONTEXT/IMSIC/CSRIND）的合取，不是单条 norm: 条文。"
+                "各条款 rule_id 见 extra_refs；"
                 "Sstc 按恢复后的 norm:menvcfg_stce_op2（stimecmp 或 vstimecmp）。"
-                "不要给合取硬凑一个 id。"),
+                "AIA/C 等位未进规格，见 spec_permit 文件头 TODO。不要给合取硬凑一个 id。"),
     tags=["EQ"]))

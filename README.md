@@ -144,7 +144,7 @@ demo 的第三步把这 3 条拿去重跑当前 RTL，`CSRPermit/S3` 给出反�
 | `pc1` | fix | 回滚 `94a4b91a`：恢复 `menvcfg.STCE` 对 `vstimecmp` 的门控 | FIXED（`CSRPermit/S3`、`S3b` 转为通过） |
 | `m1` | defect | `mcounteren.TM` 不再门控 `vstimecmp` | KILLED by `S1b` |
 | `m2` | defect | 去掉 HU 态的 `scounteren` 检查 | KILLED by `C2` ×5 |
-| `m3` | defect | 去掉 `hstateen` 对 `sstateen` 的门控 | KILLED by `E3` ×4 |
+| `m3` | defect | 去掉 `hstateen` 对 `sstateen` 的门控 | KILLED by `E3` ×4（EQ 已挂 expect_kill，与 SE 规格重叠） |
 | `m4` | defect | VS 计数器门控误用 `scounteren` 而非 `hcounteren` | KILLED by `C3` ×5 |
 | `t1` | defect | `hsEXVec` 忽略 `medeleg` | KILLED by `D2`/`D5` ×36 |
 | `t2` | defect | `vsEXVec` 忽略 `hedeleg` | KILLED by `D4` ×18 |
@@ -236,8 +236,10 @@ case("S9",                                        # pid（模块内唯一）
 SMT 只穷尽剩余自由位，职责是选点回归。等价性层（`CSRPermit/EQ-permit`）用独立规格函数
 `spec_permit.permit`，在「已建模使能位自由、未覆盖路径按假设关掉」下证
 `(rtl.EX_II ↔ spec.II) ∧ (rtl.EX_VI ↔ spec.VI)`；地址、特权、ren/wen 全部自由，不再钉 0x14D。
-规格只来自特权规范 / SpecRef，禁止把 RTL 比较器翻译进去。本轮没写进规格的条款
-（XRet、FS/VS off、AIA 其余、Smstateen、Smcdeleg、custom、scountinhibit/scountovf）
+规格只来自特权规范 / SpecRef，禁止把 RTL 比较器翻译进去。本轮覆盖 Privilege、
+只读写、Sstc、counteren、TVM，以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND
+（手册点名的 CSR）。未覆盖条款（XRet、FS/VS off、AIA 其余含 stateen.AIA、
+Smcdeleg 间接窗口内容、custom/stateen.C、scountinhibit/scountovf）
 必须写成可满足的假设关掉，否则会被无关路径打红。合取型主定理用 `prove_fn` 出 z3 公式，
 条款的 `rule_id` 放 `extra_refs`，不要给合取硬凑一个 id。
 
@@ -293,9 +295,11 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 7. 多参照交叉检查未实现，只留了接口与设计说明（`docs/spike-crosscheck.md`）。
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
    覆盖率缺口需要人来判断。
-9. `CSRPermit/EQ-permit` 只覆盖 Privilege、只读写、Sstc、counteren、TVM。
-   未覆盖条款靠假设关掉，不是用 RTL 行为填进规格。假设太松会被无关条款打红，
-   应收紧假设或扩规格，不要抄比较器凑绿。
+9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
+   以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款
+   （XRet、FS/VS off、AIA 其余含 stateen.AIA、Smcdeleg 窗口内容、
+   custom/stateen.C、scountinhibit/scountovf）靠假设关掉，不是用 RTL
+   行为填进规格。假设太松会被无关条款打红，应收紧假设或扩规格，不要抄比较器凑绿。
 
 ## 参考
 

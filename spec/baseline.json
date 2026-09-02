@@ -2,7 +2,7 @@
   "spec_repo": "riscv/riscv-isa-manual",
   "commit": "f20aa35ff0890991f8213a667658c7768f581bd1",
   "commit_date": "2026-06-14T01:04:33Z",
-  "rule_count": 51,
+  "rule_count": 56,
   "rules": {
     "norm:H_cause_virtual_instruction": {
       "rule_id": "norm:H_cause_virtual_instruction",
@@ -41,6 +41,7 @@
       "sha256": "1cc64ecee4860c55",
       "text": "The next two bits (csr[9:8]) encode the lowest privilege level that can access the CSR, with the pattern `10` representing hypervisor CSRs.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/R1[cycle]",
         "CSRPermit/R1[cycleh]",
         "CSRPermit/R1[mvendorid]",
@@ -104,6 +105,7 @@
       "sha256": "b0d58aedb0d168fa",
       "text": "In addition, when the TM bit in the `hcounteren` register is clear, attempts to\naccess the `vstimecmp` register (via `stimecmp`) while executing in VS-mode will\ncause a virtual-instruction exception if the same bit in `mcounteren` is set.\nWhen this bit and the same bit in `mcounteren` are both set, access to the\n`vstimecmp` register (if implemented) is permitted in VS-mode.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/S4",
         "CSRPermit/S8"
       ]
@@ -134,7 +136,8 @@
         "CSRPermit/C6[hpm31]",
         "CSRPermit/C6[hpm5]",
         "CSRPermit/C6[instret]",
-        "CSRPermit/C6[time]"
+        "CSRPermit/C6[time]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hedeleg_op": {
@@ -207,6 +210,7 @@
       "sha256": "9e4e77a70bd5ed03",
       "text": "The Sstc extension adds the `STCE` (STimecmp Enable) bit to `henvcfg` CSR. When\nthe Sstc extension is not implemented, `STCE` is read-only zero. The `STCE` bit\nenables `vstimecmp` for VS-mode when set to one. When `STCE` bit is `henvcfg` is\nzero, an attempt to access `stimecmp` (really `vstimecmp`) when V=1 raises a\nvirtual-instruction exception, and `VSTIP` in `hip` reverts to its defined behavior\nas if this extension is not implemented.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/S5"
       ]
     },
@@ -217,6 +221,7 @@
       "sha256": "4d90d90213915dae",
       "text": "When `mstatus`.TVM=1, attempts to read or write `hgatp` while\nexecuting in HS-mode will raise an illegal-instruction exception.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/T2"
       ]
     },
@@ -247,6 +252,16 @@
         "TrapHandle/V3[n=6]"
       ]
     },
+    "norm:hstateen0_SE0_op": {
+      "rule_id": "norm:hstateen0_SE0_op",
+      "file": "priv/smstateen.adoc",
+      "line": 270,
+      "sha256": "bb1684421b20adf2",
+      "text": "The SE0 bit in `hstateen0` controls access to the\n`sstateen0` CSR.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
     "norm:hstateen0_aia_op": {
       "rule_id": "norm:hstateen0_aia_op",
       "file": "priv/smstateen.adoc",
@@ -264,7 +279,8 @@
       "sha256": "239a6a829623ae41",
       "text": "The CONTEXT bit in\n`hstateen0` controls access to the `scontext` CSR provided by the Sdtrig\nextension.",
       "properties": [
-        "CSRPermit/EH.CONTEXT[scontext]"
+        "CSRPermit/EH.CONTEXT[scontext]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hstateen0_csrind_op": {
@@ -276,6 +292,7 @@
       "properties": [
         "CSRPermit/EH.CSRIND[sireg]",
         "CSRPermit/EH.CSRIND[siselect]",
+        "CSRPermit/EQ-permit",
         "CSRPermit/ID-D2"
       ]
     },
@@ -286,7 +303,8 @@
       "sha256": "51c7285be5aa5dc0",
       "text": "The ENVCFG bit in `hstateen0` controls access to the\n`senvcfg` CSRs.",
       "properties": [
-        "CSRPermit/EH.ENVCFG[senvcfg]"
+        "CSRPermit/EH.ENVCFG[senvcfg]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hstateen0_imsic_op": {
@@ -296,7 +314,8 @@
       "sha256": "0b1f4931e0fd1720",
       "text": "The IMSIC bit in\n`hstateen0` controls access to the guest IMSIC state, including CSRs `stopei`\n(really `vstopei`), provided by the Ssaia extension.",
       "properties": [
-        "CSRPermit/EH.IMSIC[stopei]"
+        "CSRPermit/EH.IMSIC[stopei]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hstateen_bit_63_op": {
@@ -309,7 +328,18 @@
         "CSRPermit/E3[0]",
         "CSRPermit/E3[1]",
         "CSRPermit/E3[2]",
-        "CSRPermit/E3[3]"
+        "CSRPermit/E3[3]",
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:hstateen_encoding": {
+      "rule_id": "norm:hstateen_encoding",
+      "file": "priv/smstateen.adoc",
+      "line": 130,
+      "sha256": "2a7c3f523b8fc4e0",
+      "text": "With the hypervisor extension, the `hstateen` CSRs have identical encodings to\nthe `mstateen` CSRs, except controlling accesses for a virtual machine (from VS\nand VU modes).",
+      "properties": [
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:hstatus_vgein_op": {
@@ -333,6 +363,7 @@
       "sha256": "945532f896aa4017",
       "text": "When VTVM=1, an attempt in\nVS-mode to execute SFENCE.VMA or SINVAL.VMA or to access CSR `satp`\nraises a virtual-instruction exception.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/T3",
         "CSRPermit/T6"
       ]
@@ -353,7 +384,8 @@
         "CSRPermit/C1u[hpm31]",
         "CSRPermit/C1u[hpm5]",
         "CSRPermit/C1u[instret]",
-        "CSRPermit/C1u[time]"
+        "CSRPermit/C1u[time]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:mcounteren_set_nxt_priv": {
@@ -377,6 +409,7 @@
       "sha256": "298b93a3738001f8",
       "text": "when the csr:[tm] bit in the csr:mcounteren[] register is clear, attempts to\naccess the csr:stimecmp[] or csr:vstimecmp[] register while executing in a mode less\nprivileged than M will cause an illegal-instruction exception.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/S1a",
         "CSRPermit/S1b",
         "CSRPermit/S1c"
@@ -389,6 +422,7 @@
       "sha256": "a05476fc9d6d8528",
       "text": "When this bit is set, access to the csr:stimecmp[] or csr:vstimecmp[] register is permitted in S-mode\nif implemented, and access to the csr:vstimecmp[] register (via csr:stimecmp[]) is\npermitted in VS-mode if implemented and not otherwise prevented by the csr::[tm] bit in\ncsr:hcounteren[].",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/S6",
         "CSRPermit/S7"
       ]
@@ -466,6 +500,7 @@
       "sha256": "59c33250aeb8103c",
       "text": "The `STCE` bit enables `stimecmp` for S-mode when set to one.\nWhen this extension is implemented and `STCE` in `menvcfg` is zero, an attempt to access `stimecmp`\nin a mode other than M-mode raises an illegal-instruction exception, `STCE` in\n`henvcfg` is read-only zero, and `STIP` in `mip` and `sip` reverts to its\ndefined behavior as if this extension is not implemented. Further, if the H\nextension is implemented, then `hip`.VSTIP also reverts its defined behavior as\nif this extension is not implemented.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/S2",
         "CSRPermit/S3",
         "CSRPermit/S3b"
@@ -494,7 +529,8 @@
       "text": "The CONTEXT bit in `mstateen0` controls access to the `scontext` and\n`hcontext` CSRs provided by the Sdtrig extension.",
       "properties": [
         "CSRPermit/EM.CONTEXT[hcontext]",
-        "CSRPermit/EM.CONTEXT[scontext]"
+        "CSRPermit/EM.CONTEXT[scontext]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:mstateen0_csrind_op": {
@@ -508,6 +544,7 @@
         "CSRPermit/EM.CSRIND[siselect]",
         "CSRPermit/EM.CSRIND[vsireg]",
         "CSRPermit/EM.CSRIND[vsiselect]",
+        "CSRPermit/EQ-permit",
         "CSRPermit/ID-D1"
       ]
     },
@@ -519,7 +556,8 @@
       "text": "The ENVCFG bit in `mstateen0` controls access to the `henvcfg`, `henvcfgh`,\nand the `senvcfg` CSRs.",
       "properties": [
         "CSRPermit/EM.ENVCFG[henvcfg]",
-        "CSRPermit/EM.ENVCFG[senvcfg]"
+        "CSRPermit/EM.ENVCFG[senvcfg]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:mstateen0_imsic_op": {
@@ -530,7 +568,18 @@
       "text": "The IMSIC bit in `mstateen0` controls access to the IMSIC state, including\nCSRs `stopei` and `vstopei`, provided by the Ssaia extension.",
       "properties": [
         "CSRPermit/EM.IMSIC[stopei]",
-        "CSRPermit/EM.IMSIC[vstopei]"
+        "CSRPermit/EM.IMSIC[vstopei]",
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:mstateen0_se0_op": {
+      "rule_id": "norm:mstateen0_se0_op",
+      "file": "priv/smstateen.adoc",
+      "line": 269,
+      "sha256": "47bb6fcad9c8ac4b",
+      "text": "The SE0 bit in `mstateen0` controls access to the `hstateen0`, `hstateen0h`,\nand the `sstateen0` CSRs.",
+      "properties": [
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:mstateen_bit_63_op": {
@@ -547,7 +596,8 @@
         "CSRPermit/E2[0]",
         "CSRPermit/E2[1]",
         "CSRPermit/E2[2]",
-        "CSRPermit/E2[3]"
+        "CSRPermit/E2[3]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:mstatus_tvm_warl_op": {
@@ -557,6 +607,7 @@
       "sha256": "0b003039f7a8ad0c",
       "text": "The csr::[tvm] (Trap Virtual Memory) bit is a *WARL* field that supports intercepting\nsupervisor virtual-memory management operations. When csr::[tvm]=1, attempts to\nread or write the csr:satp[] CSR or execute an insn:sfence.vma[] or insn:sinval.vma[]\ninstruction while executing in S-mode will raise an illegal-instruction\nexception. When csr::[tvm]=0, these operations are permitted in S-mode. csr::[tvm] is\nread-only 0 when S-mode is not supported or if csr:satp[mode] is read-only 0;\notherwise, it must be writable.",
       "properties": [
+        "CSRPermit/EQ-permit",
         "CSRPermit/T1",
         "CSRPermit/T4",
         "CSRPermit/T5"
@@ -595,7 +646,8 @@
         "CSRPermit/C7[hpm31]",
         "CSRPermit/C7[hpm5]",
         "CSRPermit/C7[instret]",
-        "CSRPermit/C7[time]"
+        "CSRPermit/C7[time]",
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:smcdeleg_cde_en": {
@@ -717,6 +769,26 @@
       "properties": [
         "TrapHandle/DT1",
         "TrapHandle/DT5"
+      ]
+    },
+    "norm:stateen_illegal_state_access": {
+      "rule_id": "norm:stateen_illegal_state_access",
+      "file": "priv/smstateen.adoc",
+      "line": 89,
+      "sha256": "1e2bfb3995918866",
+      "text": "Just as with the `counteren` CSRs,\nwhen a `stateen` CSR prevents access to state by\nless-privileged levels, an attempt in one of those privilege modes to execute\nan instruction that would read or write the protected state raises an illegal-instruction\nexception, or, if executing in VS or VU mode and the circumstances\nfor a virtual-instruction exception apply, raises a virtual-instruction\nexception instead of an illegal-instruction exception.",
+      "properties": [
+        "CSRPermit/EQ-permit"
+      ]
+    },
+    "norm:stateen_op": {
+      "rule_id": "norm:stateen_op",
+      "file": "priv/smstateen.adoc",
+      "line": 86,
+      "sha256": "8651c803fb30ad4e",
+      "text": "The `stateen` registers at each level control access to state at all\nless-privileged levels, but not at its own level.",
+      "properties": [
+        "CSRPermit/EQ-permit"
       ]
     },
     "norm:trap_unexp_hndl_no_rnmi": {

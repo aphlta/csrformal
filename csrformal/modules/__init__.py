@@ -83,7 +83,7 @@ def _build() -> Dict[str, ModuleSpec]:
                    _mut("m2_CSRPermitModule.scala"), ["C2"]),
             Mutant("m3", "CSRPermitModule",
                    "去掉 hstateen 对 sstateen 的门控",
-                   _mut("m3_CSRPermitModule.scala"), ["E3"]),
+                   _mut("m3_CSRPermitModule.scala"), ["E3", "EQ"]),
             Mutant("m4", "CSRPermitModule",
                    "VS 计数器门控误用 scounteren 而非 hcounteren",
                    _mut("m4_CSRPermitModule.scala"), ["C3"]),
