@@ -1,63 +1,40 @@
-# 多参照交叉检查（Spike）：设计说明与接口（未实现）
+# Spike 交叉检查：反例定性，不穷举
 
-## 动机
+形式化给出反例之后，用同一组输入问 Spike 的 CSR 权限，三方投票：
 
-本工具目前是「RTL vs 形式化性质」两方对拍。两方对拍的死角是：性质写错和 RTL 写错
-在报告上都表现为 VIOLATED，只能靠人复核。
-
-引入第三方参照（Spike，`riscv-isa-sim`）后，三方的分歧模式本身可用于分类：
-
-| RTL | Spike | 性质 | 判读 |
+| RTL | Spike | 规格 | 判读 |
 |---|---|---|---|
-| 错 | 对 | 对 | RTL bug（置信度最高） |
+| 错 | 对 | 对 | RTL bug |
 | 对 | 错 | 对 | Spike bug |
-| 错 | 错 | 对 | 规范条文歧义或勘误：两个独立实现作同一理解 |
-| 对 | 对 | 错 | 性质写错 |
+| 错 | 错 | 对 | 条文歧义或两家实现作同一理解 |
+| 对 | 对 | 错 | 规格写错 |
 
-第三行已有实例：`norm:menvcfg_stce_op2` 的 issue
-[#3329](https://github.com/riscv/riscv-isa-manual/issues/3329) 中，报告者用 Spike 的
-`stimecmp_csr_t::verify_permissions`（`stimecmp` 与 `vstimecmp` 共用，第一项检查就是
-`MENVCFG_STCE`）作为规范原文被误删的证据。
+Spike 不参与全输入空间求解。未默认启用：`csrformal check` 要加 `--spike`，或事后 `csrformal spike-cex out/reports/compliance.json`。本机没有能跑的 spike 时跳过，不假装跑过。
+
+## 入口
+
+```
+./bin/csrformal check CSRPermitModule --only EQ --spike
+./bin/csrformal spike-cex out/reports/compliance.json
+```
+
+环境变量：`CSRFORMAL_SPIKE`、`CSRFORMAL_RISCV_GCC`、`CSRFORMAL_SPIKE_SRC`。
+实现在 `csrformal/spike_oracle.py`：解析反例里的 priv / addr / wen / STCE，能跑则子进程编一段裸机；不能跑则打印手工步骤。
 
 ## 本地资源
 
 Spike 源码：`/ssdhome/maoweiming/xiangshan-work/issues/1872/riscv-isa-sim`
-相关文件：`riscv/csrs.cc`（各 CSR 的 `verify_permissions`）、`riscv/csrs.h`。
+相关文件：`riscv/csrs.cc` 的 `stimecmp_csr_t::verify_permissions`。
+本仓库开发机上的 spike 二进制因 glibc 过旧无法启动（2026-09-02 探测），所以没有实测数字。
 
-## 拟定接口
+## 已知 S3 反例的手工步骤（HS, 0x24D, STCE=0）
 
-在 `csrformal/oracle.py` 里定义一个协议，让参照实现可插拔：
+输入与 `CSRPermit/S3` / `EQ-permit` 同类：HS（PRVM=S, V=0），地址 `0x24D`（vstimecmp），`menvcfg.STCE=0`，读或写均可。
 
-```python
-class Oracle(Protocol):
-    name: str
-    def csr_permit(self, st: CsrState, addr: int, write: bool) -> Verdict:
-        """给定 CSR 架构状态与一次访问，返回 NONE / ILLEGAL / VIRTUAL。"""
-```
+1. 用 `riscv64-unknown-elf-gcc -nostdlib -march=rv64gch` 编一段裸机：M 态把 `menvcfg` 的 STCE（bit 63）清零，设 `mstatus.MPP=S`、`MPV=0`，`mret` 进 HS，再 `csrr t0, 0x24D`。
+2. `spike --isa=rv64gch_zicsr_sstc <elf>`，看 `mcause`：2 = II，22 = VI。
+3. 源码对照（不跑也能定性）：`stimecmp_csr_t::verify_permissions` 第一项是 `menvcfg.STCE=0` 且 `prv<M` → `trap_illegal_instruction`。`vstimecmp` 与 `stimecmp` 共用此类（`csr_init.cc` 里两个地址都 `make_shared<stimecmp_csr_t>`）。
 
-- `CsrState` 是 `CSRPermitModule` 输入端口集合的语义化版本
-  （privState、mcounteren/hcounteren/scounteren、menvcfg/henvcfg、
-  mstateen*/hstateen*、mstatus.TVM、hstatus.VTVM/VGEIN、miselect/siselect/vsiselect）。
-- `SmtOracle` 复用 `smt.Circuit`，把反例模型翻译成 `CsrState`。
-- `SpikeOracle` 有两条可选实现路径：
-  1. 进程内：把 `riscv/csrs.cc` 里的 `verify_permissions` 抽出来编成一个小 `.so`，
-     用 ctypes 喂状态。改动小，但需要构造 `processor_t` 的桩。
-  2. 子进程：生成一段只做 CSR 访问的裸机测试，用 `spike --isa=...` 跑，从 `mcause` 读判决。
-     每点约 50 ms，但零侵入。形式化反例数量在个位数到几十个量级，选这条。
+按源码，Spike=II，与恢复后的 `norm:menvcfg_stce_op2` / 本仓库 spec 一致，与 b90dbba 的 RTL（不门控 vstimecmp）不一致 → RTL bug。这是源码阅读结论，不是本机实测。
 
-## 与现有流水线的接法
-
-反例驱动，不穷举：
-
-```
-csrformal check → VIOLATED 的性质 → 反例模型（一组完整输入取值）
-                                   → SpikeOracle 在同一输入上求判决
-                                   → 三方投票写进报告的「候选发现」表
-```
-
-Spike 不参与全输入空间求解，只在形式化找到反例之后给该反例定性。
-
-## 未实现的原因
-
-优先级排在 P2，本轮预算用在了 P0/P1（工具整合、规则追溯、真空性门禁、规范漂移、变异回归）。
-这里只留接口与判读表。
+issue [#3329](https://github.com/riscv/riscv-isa-manual/issues/3329) 也曾用同一处 Spike 检查作为「原文被误删」的旁证。
