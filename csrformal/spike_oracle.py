@@ -176,15 +176,18 @@ def manual_steps(acc: CexAccess) -> str:
         f"     stimecmp_csr_t::verify_permissions 第一项："
         f"menvcfg.STCE=0 且 prv<M → illegal_instruction。"
         f"vstimecmp 与 stimecmp 共用此类。\n"
-        f"  已知 S3（HS, 0x24D, STCE=0）：按源码 Spike=II，"
-        f"与恢复后 spec 一致、与 b90dbba RTL 不一致 → RTL bug。"
-        f"本环境若 spike 因 glibc 跑不起来，不要把这句写成实测数字。"
+        f"  已知 S3（HS, 0x24D, STCE=0）：Docker 实测 Spike=II，"
+        f"见 docs/spike-crosscheck.md。本机若 spike 因 glibc 跑不起来，"
+        f"跳过即可，不要把源码阅读写成实测。"
     )
 
 
+# menvcfg 用地址 0x30A：Ubuntu 22.04 自带 binutils 2.35 还不认这个名字。
+# tohost 必须带 fromhost，否则 fesvr 直接放弃 HTIF，裸机死循环。
+# fesvr 把 tohost 低 48 位的奇数当退出码（payload>>1）；写成偶数会被当成
+# syscall 参数块地址。所以把 mcause 编成 (mcause<<1)|1，进程退出码才是 mcause。
 _ASM_TEMPLATE = r"""
 # 最小裸机：M 态设 menvcfg.STCE，再 mret 到目标特权，访问指定 CSR。
-# 陷入则把 mcause 写入 tohost（spike 退出码）；没陷入写 0。
     .option norvc
     .section .text
     .globl _start
@@ -192,7 +195,7 @@ _start:
     la   t0, _mtvec
     csrw mtvec, t0
     li   t0, {menv}
-    csrw menvcfg, t0
+    csrw 0x30A, t0
     # mstatus.MPP = {mpp}（bits 12:11）；MPV = {mpv}（bit 39）
     li   t0, {mstatus}
     csrw mstatus, t0
@@ -208,6 +211,8 @@ _guest:
 _mtvec:
     csrr t0, mcause
 _exit:
+    slli t0, t0, 1
+    ori  t0, t0, 1
     la   t1, tohost
     sd   t0, 0(t1)
 1:  j    1b
@@ -216,6 +221,10 @@ _exit:
     .align 6
     .globl tohost
 tohost:
+    .dword 0
+    .align 6
+    .globl fromhost
+fromhost:
     .dword 0
 """
 
@@ -255,28 +264,60 @@ def _run_baremetal(acc: CexAccess, spike: str, gcc: str) -> SpikeVote:
     elf = os.path.join(work, "cex.elf")
     with open(sfile, "w", encoding="utf-8") as f:
         f.write(asm)
+    # KEEP：避免空 .tohost 被 gc。fromhost 与 tohost 同段，fesvr 两个都要。
     ld = (
         "OUTPUT_ARCH(riscv)\nENTRY(_start)\nSECTIONS { "
         ". = 0x80000000; .text : { *(.text) } "
-        ". = 0x80001000; .tohost : { *(.tohost) } }\n"
+        ". = 0x80001000; .tohost : { KEEP(*(.tohost)) } }\n"
     )
     lfile = os.path.join(work, "cex.ld")
     with open(lfile, "w", encoding="utf-8") as f:
         f.write(ld)
-    c = subprocess.run(
-        [gcc, "-nostdlib", "-nostartfiles", "-march=rv64gch", "-mabi=lp64",
-         "-T", lfile, sfile, "-o", elf],
-        capture_output=True, text=True, timeout=30)
-    if c.returncode != 0:
+    # 汇编只用到 csr/mret，不需要 H。gcc 10 / 9 的 -march 还不认 h。
+    compile_err = ""
+    compiled = False
+    for march in ("rv64gch", "rv64gc"):
+        c = subprocess.run(
+            [gcc, "-nostdlib", "-nostartfiles", f"-march={march}", "-mabi=lp64",
+             "-T", lfile, sfile, "-o", elf],
+            capture_output=True, text=True, timeout=30)
+        if c.returncode == 0:
+            compiled = True
+            break
+        compile_err = (c.stderr or c.stdout).strip()[:200]
+    if not compiled:
         return SpikeVote(acc.pid, acc, None,
-                         skipped=f"交叉编译失败：{(c.stderr or c.stdout).strip()[:200]}",
+                         skipped=f"交叉编译失败：{compile_err}",
                          reading=classify(acc.rtl, acc.spec, None))
-    r = subprocess.run(
-        [spike, "--isa=rv64gch_zicsr_sstc", elf],
-        capture_output=True, text=True, timeout=20)
-    # spike 把 tohost 当退出码；有的版本打印 tohost。两边都认。
+    # zicsr 在部分 spike 是隐含的；认不出就去掉再试一次。
+    r = None
+    run_err = ""
+    for isa in ("rv64gch_zicsr_sstc", "rv64gch_sstc"):
+        try:
+            r = subprocess.run(
+                [spike, f"--isa={isa}", elf],
+                capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            run_err = str(e)
+            continue
+        log = (r.stdout or "") + (r.stderr or "")
+        if "unsupported" in log.lower() or "invalid isa" in log.lower():
+            run_err = log.strip()[:200]
+            continue
+        break
+    if r is None:
+        return SpikeVote(acc.pid, acc, None,
+                         skipped=f"spike 子进程失败：{run_err}",
+                         reading=classify(acc.rtl, acc.spec, None))
+    log_path = os.path.join(work, "run.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(f"# spike {' '.join(r.args)}\n# returncode={r.returncode}\n")
+        f.write(r.stdout or "")
+        f.write(r.stderr or "")
+    # fesvr 退出码是 mcause；失败时还会印 "*** FAILED *** (tohost = N)"。
     cause = r.returncode
-    m = re.search(r"tohost\s*=\s*(0x[0-9a-fA-F]+|\d+)", r.stdout + r.stderr)
+    m = re.search(r"tohost\s*=\s*(0x[0-9a-fA-F]+|\d+)",
+                  (r.stdout or "") + (r.stderr or ""))
     if m:
         cause = int(m.group(1), 0)
     verdict = _mcause_to_verdict(cause)
