@@ -1,23 +1,26 @@
 # csrformal
 
-用 SMT 求解器在全输入空间上验证香山 CSR 子系统是否符合 RISC-V 特权规范。
-每条性质机械追溯到规范原文（规则 id + 原文哈希），规范变化时可定位到需要重新审阅的结论。
+在声明的假设下，对香山 CSR 的组合模块做 SMT 检查。case 是选点回归；
+EQ 是带假设的局部等价，不是「符合整本特权规范」。每条性质带规则 id
+和原文哈希，规范改了可以标出该重审的结论。
 
-已在真实代码上找到 1 个确认级 RTL bug（Sstc：`menvcfg.STCE=0` 时未门控 `vstimecmp` 访问）。
+当前能打红的确认级差异：`menvcfg.STCE=0` 时 RTL 未门控 `vstimecmp`
+（`CSRPermit/S3` 与 `CSRPermit/EQ-permit` 同红）。
 
 ## 适用范围
 
-香山的 CSR 权限判定与陷入路由是纯组合真值表：输入是特权态、CSR 地址和一组 enable 位，
-输出是抛不抛异常、抛哪种、陷到哪一级。`CSRPermitModule` 光地址就有 4096 种取值，
-再乘 20 多个 enable 位，定向测试覆盖不全，而 SMT 可以穷尽。
+`CSRPermitModule` 与 `TrapHandleModule` 精化后 registers=0，是纯组合。
+输入是特权态、CSR 地址和一组 enable 位。SMT 在假设允许的自由位上穷尽，
+不是在全输入空间上证明整本规范。
 
-三条自检机制：
+自检：
 
-- 每条性质先做假设集可满足性检查，不可满足判 `VACUOUS`（失败）而非通过，报告首屏给出真空条数。
-- 每条性质携带 `rule_id`、规范源文件、commit 与原文哈希，`spec-drift` 据此比对。
-- `self-test` 注入 10 个已知缺陷，要求意图对应的性质报出反例。
+- 假设集不可满足判 `VACUOUS`（失败），不是通过。
+- `spec-drift` 比对被引用规则的原文；EQ 的条款在 `extra_refs` 里，必须进基线。
+- `spec-selfcheck` 证明 `permit()` 与 `permit_smt()` 在同一套 `eq_assumes` 下一致。
+- `self-test` 注入已知缺陷，要求意图对应的性质报反例。
 
-规则追溯的实际案例见 [规范漂移 demo](#规范漂移-demo)。
+规则追溯的案例见 [规范漂移 demo](#规范漂移-demo)。
 
 ## 安装
 
@@ -48,8 +51,8 @@ pip install -r requirements.txt        # 只有 z3-solver
 # 1) 静态自检：性质元数据是否齐全，引用的规则 id 是否存在于规范中
 ./bin/csrformal lint
 
-# 2) 记录规范基线（快照被引用规则的原文）
-./bin/csrformal spec-baseline --ref main
+# 2) 记录规范基线（默认钉恢复后的 menvcfg_stce_op2；不要对权威文件用 f20aa35）
+./bin/csrformal spec-baseline
 
 # 3) 跑全部模块的全部性质，出报告
 ./bin/csrformal check all
@@ -63,13 +66,16 @@ pip install -r requirements.txt        # 只有 z3-solver
 # 把「需要重新审阅」的性质喂回去重跑
 ./bin/csrformal check all --review out/reports/spec-drift.json
 
-# 5) 变异回归（阳性对照）
+# 5) 规格自洽（permit() 与 permit_smt()）
+./bin/csrformal spec-selfcheck
+
+# 6) 变异回归（阳性对照）
 ./bin/csrformal self-test --report out/reports/self-test.md
 
 # 辅助
 ./bin/csrformal list                 # 列出全部性质
 ./bin/csrformal rules --text         # 列出被引用的规则 id 及原文
-./bin/csrformal spike                # 多参照交叉检查的设计说明（未实现）
+./bin/csrformal spike-cex out/reports/compliance.json   # 对反例问 Spike；缺二进制则跳过
 ```
 
 产物：
@@ -80,19 +86,14 @@ pip install -r requirements.txt        # 只有 z3-solver
 
 退出码：有反例 / 真空 / 错误时为 1，全通过为 0。
 
-### 端到端实测（2026-09-01，`XiangShan-b90dbba` @ `b90dbba4`）
+### 登记规模（`XiangShan-b90dbba` @ `b90dbba4`）
 
-```
-$ ./bin/csrformal check all --rebuild        # 全冷启动：重编 harness + 重新精化两个模块
-==== 共 295 条：通过 294，反例 1，真空 0，未知 0，错误 0 ====
-求解器累计 3.48s，壁钟 14.3s
-```
-
-- `CSRPermitModule` 155 条（152 条单实例 + 3 条特权单调性关系型）
+- `CSRPermitModule` 156 条（case + 3 条 MONO + 1 条 EQ）
 - `TrapHandleModule` 140 条
-- 唯一反例是 `CSRPermit/S3`，即已确认的 Sstc bug（F1）
-- 真空 0 条
-- 精化有缓存，复跑（`./bin/csrformal check all`）7.4 s，单条 `--only` 是秒级
+- 当前红的是 `CSRPermit/S3` 与 `CSRPermit/EQ-permit`，反例都是
+  `vstimecmp` + `menvcfg.STCE=0` 一类。EQ 绿只表示「已建模条款 + 假设关掉的路径」
+  下 RTL 与 `permit()` 一致，不等于符合整本规范。
+- 精化有缓存，单条 `--only` 是秒级。不要无故 `--rebuild`。
 
 ## 规范漂移 demo
 
@@ -109,23 +110,25 @@ $ ./bin/csrformal check all --rebuild        # 全冷启动：重编 harness + �
 | 2026-08-20 | `riscv-isa-manual` issue #3329 指出这是编辑事故 |
 | 2026-08-24 | PR #3344 恢复原文，当前 main 已是恢复后的文本 |
 
-结果是照着规范改的实现被规范勘误反转。demo 把基线固定在 2026-06-14
-（`f20aa35`，实现作者当时看到的文本），再与当前 main 比对：
+结果是照着规范改的实现被规范勘误反转。demo 把一份旁路基线固定在 2026-06-14
+（`f20aa35`，误删文本；不是 EQ 权威），再与当前 main 比对。权威基线
+`spec/baseline.json` 钉在恢复后的原文（含 `or vstimecmp`），
+`spec-baseline` 默认不会把权威文件拧回误删版。
 
 ```
 [CHANGED] norm:menvcfg_stce_op2
   基线位置 priv/machine.adoc:2222  sha=59c33250aeb8103c
   当前位置 priv/machine.adoc:2223  sha=e56229e7534fd5f1
-  --- 词级差异（- 基线 / + 当前）---
+  词级差异（- 基线 / + 当前）
     + or `vstimecmp`
-  --- 受影响、需要重新审阅的性质（3 条）---
+  受影响、需要重新审阅的性质
+    * CSRPermit/EQ-permit
     * CSRPermit/S2
     * CSRPermit/S3
     * CSRPermit/S3b
 ```
 
-demo 的第三步把这 3 条拿去重跑当前 RTL，`CSRPermit/S3` 给出反例，
-即 `CSRPermitModule.scala:228-230` 已不符合恢复后的规范。
+demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ 给出反例。
 
 同一次比对还检出另外两条规则的文本变化：`norm:hideleg_trans` 删掉了一句关于平台中断的说明，
 `norm:trap_unexp_hndl_rnmi` 加了两个词。对应的 4 条性质被标为需重新审阅，重跑后仍然通过。
@@ -171,15 +174,16 @@ csrformal/
   runner.py                真空性门禁 + 求解 + 结构化结果
   report.py                Markdown / JSON 报告
   cli.py                   子命令
+  spec_selfcheck.py        permit() 与 permit_smt() 自洽
+  spike_oracle.py          反例定性（可选；缺 spike 跳过）
   modules/
     __init__.py            模块注册表（性质 + 源文件 + 变异体）
-    csr_permit.py          CSRPermitModule 的 155 条 case + 3 条 MONO + 1 条 EQ
+    csr_permit.py          CSRPermitModule 156 条（case + MONO + EQ）
     trap_handle.py         TrapHandleModule 的 140 条性质
 src/eqcheck/Elab2.scala    最小精化 harness（把单个子模块当 top）
 mutants-src/               变异体源码（base_* 与各变异版本）
-spec/baseline.json         被引用规则的原文快照（进版本库、可被 review）
-spec/cache/<sha>/          规范仓库某个 commit 的 adoc 缓存
-docs/spike-crosscheck.md   多参照交叉检查设计说明（未实现）
+spec/baseline.json         权威基线：恢复后的被引用规则原文
+docs/spike-crosscheck.md   Spike 反例定性（未默认启用）
 ```
 
 ### 已验证的技术路径
@@ -292,14 +296,13 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
    未约束的自由度内）、AIA iprio 窗口的奇偶规则、fp/vec 的 `mstatus.FS/VS`、
    custom CSR 地址段。
 6. 配置相关：结论基于 `MinimalConfig`（`geilen=7`），`vgein` 相关性质依赖该参数。
-7. 多参照交叉检查未实现，只留了接口与设计说明（`docs/spike-crosscheck.md`）。
+7. Spike 只做反例定性，不穷举。`check --spike` / `spike-cex` 未默认启用；
+   本机没有能跑的 spike 时跳过，见 `docs/spike-crosscheck.md`。
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
-   覆盖率缺口需要人来判断。
 9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
-   以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款
-   （XRet、FS/VS off、AIA 其余含 stateen.AIA、Smcdeleg 窗口内容、
-   custom/stateen.C、scountinhibit/scountovf）靠假设关掉，不是用 RTL
-   行为填进规格。假设太松会被无关条款打红，应收紧假设或扩规格，不要抄比较器凑绿。
+   以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款靠假设关掉。
+   EQ 绿 ≠ 符合整本规范。假设太松会被无关条款打红，应收紧假设或扩规格，
+   不要抄比较器凑绿。
 
 ## 参考
 

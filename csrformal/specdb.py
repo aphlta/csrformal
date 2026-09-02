@@ -204,8 +204,18 @@ def write_baseline(ref: str, referenced: Dict[str, List[str]], path: str) -> dic
 
     只快照被引用到的规则，不快照全部 726 条：基线文件是要进版本库、
     被人 review 的，塞进无关规则只会淹没信号。
+
+    权威路径 spec/baseline.json 必须是恢复后的 menvcfg_stce_op2
+    （含 vstimecmp）。误删时点 f20aa35 只能写到旁路文件。
     """
     sha = resolve_ref(ref)
+    official = os.path.abspath(config.BASELINE_JSON)
+    if os.path.abspath(path) == official:
+        if sha.startswith(config.DELETED_STCE_REF[:12]) or \
+                str(ref).startswith(config.DELETED_STCE_REF[:12]):
+            raise SystemExit(
+                "拒绝：f20aa35 是误删了 or vstimecmp 的文本，不是 EQ 权威基线。"
+                "demo 请用 --output 写到旁路文件。")
     rules = load_rules(sha)
     entries, missing = {}, []
     for rid, props in sorted(referenced.items()):
@@ -214,6 +224,12 @@ def write_baseline(ref: str, referenced: Dict[str, List[str]], path: str) -> dic
             missing.append(rid)
             continue
         entries[rid] = asdict(BaselineEntry(rid, r.file, r.line, r.sha, r.text, sorted(props)))
+    if os.path.abspath(path) == official:
+        stce = entries.get("norm:menvcfg_stce_op2")
+        if stce is not None and "vstimecmp" not in stce["text"]:
+            raise SystemExit(
+                "拒绝：权威基线的 norm:menvcfg_stce_op2 必须含 vstimecmp"
+                "（恢复后文本）。当前 ref 像是误删版。")
     doc = {
         "spec_repo": config.SPEC_REPO,
         "commit": sha,

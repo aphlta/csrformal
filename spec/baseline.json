@@ -1,13 +1,13 @@
 {
   "spec_repo": "riscv/riscv-isa-manual",
-  "commit": "f20aa35ff0890991f8213a667658c7768f581bd1",
-  "commit_date": "2026-06-14T01:04:33Z",
+  "commit": "a5be4cfb5aa9d4d325e43e066ce4aa0713b4a5c7",
+  "commit_date": "2026-09-02T08:15:50Z",
   "rule_count": 56,
   "rules": {
     "norm:H_cause_virtual_instruction": {
       "rule_id": "norm:H_cause_virtual_instruction",
       "file": "priv/hypervisor.adoc",
-      "line": 2323,
+      "line": 2333,
       "sha256": "be2eea842ea2f938",
       "text": "When V=1, a virtual-instruction exception (code 22) is normally raised\ninstead of an illegal-instruction exception if the attempted instruction\nis _HS-qualified_ but is prevented from executing when V=1 either due to\ninsufficient privilege or because the instruction is expressly disabled\nby a supervisor or hypervisor CSR such as `scounteren` or `hcounteren`.\nAn instruction is _HS-qualified_ if it would be valid to execute in\nHS-mode (for some values of the instruction's register operands),\nassuming fields TSR and TVM of CSR `mstatus` are both zero.",
       "properties": [
@@ -17,7 +17,7 @@
     "norm:H_virtinst_vu_nonhigh_supervisor_allowedhs_tvm0": {
       "rule_id": "norm:H_virtinst_vu_nonhigh_supervisor_allowedhs_tvm0",
       "file": "priv/hypervisor.adoc",
-      "line": 2383,
+      "line": 2393,
       "sha256": "b356f07b8f82ea60",
       "text": "in VU-mode, attempts to access an implemented non-high-half supervisor\nCSR when the same access (read/write) would be allowed in HS-mode,\nassuming `mstatus`.TVM=0;",
       "properties": [
@@ -27,7 +27,7 @@
     "norm:H_virtinst_vu_vs_nonhigh_allowedhs_tvm0": {
       "rule_id": "norm:H_virtinst_vu_vs_nonhigh_allowedhs_tvm0",
       "file": "priv/hypervisor.adoc",
-      "line": 2370,
+      "line": 2380,
       "sha256": "94cfc5e933a346e8",
       "text": "in VS-mode or VU-mode, attempts to access an implemented non-high-half\nhypervisor CSR or VS CSR when the same access (read/write) would be\nallowed in HS-mode, assuming `mstatus`.TVM=0;",
       "properties": [
@@ -51,9 +51,9 @@
     "norm:Zicsr_debug_illegal": {
       "rule_id": "norm:Zicsr_debug_illegal",
       "file": "priv/csrs.adoc",
-      "line": 62,
-      "sha256": "0f288268a01e55ec",
-      "text": "`0x7B0`{endash}``0x7BF`` are only visible to debug mode.\nImplementations should raise illegal-instruction exceptions on\nmachine-mode access to the latter set of registers.",
+      "line": 63,
+      "sha256": "1132875378d0bc95",
+      "text": "`0x7B0`{endash}``0x7BF`` are only visible to debug mode.\nImplementations must raise illegal-instruction exceptions on\nmachine-mode access to the latter set of registers.",
       "properties": [
         "CSRPermit/EQ-permit"
       ]
@@ -71,9 +71,9 @@
     "norm:Zicsr_illegal_acc": {
       "rule_id": "norm:Zicsr_illegal_acc",
       "file": "priv/csrs.adoc",
-      "line": 50,
-      "sha256": "d55ad9962aa8ab15",
-      "text": "Attempts to write a read-only register raise illegal-instruction exceptions.",
+      "line": 49,
+      "sha256": "f180438d0167cd97",
+      "text": "Attempts to write a read-only CSR address raise illegal-instruction exceptions.",
       "properties": [
         "CSRPermit/EQ-permit"
       ]
@@ -81,9 +81,9 @@
     "norm:Zicsr_illegal_mode": {
       "rule_id": "norm:Zicsr_illegal_mode",
       "file": "priv/csrs.adoc",
-      "line": 47,
-      "sha256": "991a5501c9c76ff3",
-      "text": "Attempts to access a CSR without appropriate privilege level\nraise illegal-instruction exceptions or, as described in\n<<sec:hcauses>>, virtual-instruction exceptions.",
+      "line": 46,
+      "sha256": "bdc7b2815e89c082",
+      "text": "Attempts to access a CSR address without sufficient privilege\nraise illegal-instruction exceptions or, as described in\n<<sec:hcauses>>, virtual-instruction exceptions.",
       "properties": [
         "CSRPermit/EQ-permit"
       ]
@@ -101,7 +101,7 @@
     "norm:hcounteren_acc": {
       "rule_id": "norm:hcounteren_acc",
       "file": "priv/hypervisor.adoc",
-      "line": 867,
+      "line": 866,
       "sha256": "b0d58aedb0d168fa",
       "text": "In addition, when the TM bit in the `hcounteren` register is clear, attempts to\naccess the `vstimecmp` register (via `stimecmp`) while executing in VS-mode will\ncause a virtual-instruction exception if the same bit in `mcounteren` is set.\nWhen this bit and the same bit in `mcounteren` are both set, access to the\n`vstimecmp` register (if implemented) is permitted in VS-mode.",
       "properties": [
@@ -113,7 +113,7 @@
     "norm:hcounteren_op": {
       "rule_id": "norm:hcounteren_op",
       "file": "priv/hypervisor.adoc",
-      "line": 857,
+      "line": 856,
       "sha256": "049abfcf2f8d74f3",
       "text": "When the CY, TM, IR, or HPM__n__ bit in the `hcounteren` register is\nclear, attempts to read the `cycle`, `time`, `instret`, or\n`hpmcounter` _n_ register while V=1 will cause a virtual-instruction\nexception if the same bit in `mcounteren` is 1. When one of these bits\nis set, access to the corresponding register is permitted when V=1,\nunless prevented for some other reason. In VU-mode, a counter is not\nreadable unless the applicable bits are set in both `hcounteren` and\n`scounteren`.",
       "properties": [
@@ -206,7 +206,7 @@
     "norm:henvcfg_stce": {
       "rule_id": "norm:henvcfg_stce",
       "file": "priv/hypervisor.adoc",
-      "line": 746,
+      "line": 745,
       "sha256": "9e4e77a70bd5ed03",
       "text": "The Sstc extension adds the `STCE` (STimecmp Enable) bit to `henvcfg` CSR. When\nthe Sstc extension is not implemented, `STCE` is read-only zero. The `STCE` bit\nenables `vstimecmp` for VS-mode when set to one. When `STCE` bit is `henvcfg` is\nzero, an attempt to access `stimecmp` (really `vstimecmp`) when V=1 raises a\nvirtual-instruction exception, and `VSTIP` in `hip` reverts to its defined behavior\nas if this extension is not implemented.",
       "properties": [
@@ -217,7 +217,7 @@
     "norm:hgatp_tvm_illegal": {
       "rule_id": "norm:hgatp_tvm_illegal",
       "file": "priv/hypervisor.adoc",
-      "line": 999,
+      "line": 998,
       "sha256": "4d90d90213915dae",
       "text": "When `mstatus`.TVM=1, attempts to read or write `hgatp` while\nexecuting in HS-mode will raise an illegal-instruction exception.",
       "properties": [
@@ -243,9 +243,9 @@
     "norm:hideleg_trans": {
       "rule_id": "norm:hideleg_trans",
       "file": "priv/hypervisor.adoc",
-      "line": 393,
-      "sha256": "96d3f7dd10c5bda1",
-      "text": "When a virtual supervisor external interrupt (code 10) is delegated to\nVS-mode, it is automatically translated by the machine into a supervisor\nexternal interrupt (code 9) for VS-mode, including the value written to\n`vscause` on an interrupt trap. Likewise, a virtual supervisor timer\ninterrupt (6) is translated into a supervisor timer interrupt (5) for\nVS-mode, and a virtual supervisor software interrupt (2) is translated\ninto a supervisor software interrupt (1) for VS-mode. Similar\ntranslations may or may not be done for platform interrupt\ncauses (codes 16 and above).",
+      "line": 392,
+      "sha256": "77c49f02e93ad87d",
+      "text": "When a virtual supervisor external interrupt (code 10) is delegated to\nVS-mode, it is automatically translated by the machine into a supervisor\nexternal interrupt (code 9) for VS-mode, including the value written to\n`vscause` on an interrupt trap. Likewise, a virtual supervisor timer\ninterrupt (6) is translated into a supervisor timer interrupt (5) for\nVS-mode, and a virtual supervisor software interrupt (2) is translated\ninto a supervisor software interrupt (1) for VS-mode.",
       "properties": [
         "TrapHandle/V3[n=10]",
         "TrapHandle/V3[n=2]",
@@ -371,7 +371,7 @@
     "norm:mcounteren_clr_ill_inst_exc": {
       "rule_id": "norm:mcounteren_clr_ill_inst_exc",
       "file": "priv/machine.adoc",
-      "line": 1568,
+      "line": 1569,
       "sha256": "ebe0e165142c7b6b",
       "text": "When the csr::[cy], csr::[tm], csr::[ir], or HPM__n__ bit in the csr:mcounteren[] register is\nclear, attempts to read the csr:cycle[], csr:time[], csr:instret[], or\n`hpmcounter__n__` register while executing in S-mode or U-mode will cause an\nillegal-instruction exception.",
       "properties": [
@@ -391,7 +391,7 @@
     "norm:mcounteren_set_nxt_priv": {
       "rule_id": "norm:mcounteren_set_nxt_priv",
       "file": "priv/machine.adoc",
-      "line": 1572,
+      "line": 1573,
       "sha256": "d351bc139ef40d51",
       "text": "When one of these bits is set, access to\nthe corresponding register is permitted in the next implemented\nprivilege mode (S-mode if implemented, otherwise U-mode).",
       "properties": [
@@ -405,7 +405,7 @@
     "norm:mcounteren_tm_clr": {
       "rule_id": "norm:mcounteren_tm_clr",
       "file": "priv/machine.adoc",
-      "line": 1586,
+      "line": 1587,
       "sha256": "298b93a3738001f8",
       "text": "when the csr:[tm] bit in the csr:mcounteren[] register is clear, attempts to\naccess the csr:stimecmp[] or csr:vstimecmp[] register while executing in a mode less\nprivileged than M will cause an illegal-instruction exception.",
       "properties": [
@@ -418,7 +418,7 @@
     "norm:mcounteren_tm_set": {
       "rule_id": "norm:mcounteren_tm_set",
       "file": "priv/machine.adoc",
-      "line": 1589,
+      "line": 1590,
       "sha256": "a05476fc9d6d8528",
       "text": "When this bit is set, access to the csr:stimecmp[] or csr:vstimecmp[] register is permitted in S-mode\nif implemented, and access to the csr:vstimecmp[] register (via csr:stimecmp[]) is\npermitted in VS-mode if implemented and not otherwise prevented by the csr::[tm] bit in\ncsr:hcounteren[].",
       "properties": [
@@ -430,7 +430,7 @@
     "norm:medeleg_mideleg_op2": {
       "rule_id": "norm:medeleg_mideleg_op2",
       "file": "priv/machine.adoc",
-      "line": 1238,
+      "line": 1239,
       "sha256": "0ba784162d794ddb",
       "text": "setting a bit in csr:medeleg[] or csr:mideleg[] will delegate the\ncorresponding trap, when occurring in S-mode or U-mode, to the S-mode\ntrap handler.",
       "properties": [
@@ -496,9 +496,9 @@
     "norm:menvcfg_stce_op2": {
       "rule_id": "norm:menvcfg_stce_op2",
       "file": "priv/machine.adoc",
-      "line": 2222,
-      "sha256": "59c33250aeb8103c",
-      "text": "The `STCE` bit enables `stimecmp` for S-mode when set to one.\nWhen this extension is implemented and `STCE` in `menvcfg` is zero, an attempt to access `stimecmp`\nin a mode other than M-mode raises an illegal-instruction exception, `STCE` in\n`henvcfg` is read-only zero, and `STIP` in `mip` and `sip` reverts to its\ndefined behavior as if this extension is not implemented. Further, if the H\nextension is implemented, then `hip`.VSTIP also reverts its defined behavior as\nif this extension is not implemented.",
+      "line": 2223,
+      "sha256": "e56229e7534fd5f1",
+      "text": "The `STCE` bit enables `stimecmp` for S-mode when set to one.\nWhen this extension is implemented and `STCE` in `menvcfg` is zero, an attempt\nto access `stimecmp` or `vstimecmp` in a mode other than M-mode raises an\nillegal-instruction exception, `STCE` in `henvcfg` is read-only zero, and `STIP`\nin `mip` and `sip` reverts to its defined behavior as if this extension is not\nimplemented. Further, if the H extension is implemented, then `hip`.VSTIP also\nreverts its defined behavior as if this extension is not implemented.",
       "properties": [
         "CSRPermit/EQ-permit",
         "CSRPermit/S2",
@@ -603,7 +603,7 @@
     "norm:mstatus_tvm_warl_op": {
       "rule_id": "norm:mstatus_tvm_warl_op",
       "file": "priv/machine.adoc",
-      "line": 732,
+      "line": 733,
       "sha256": "0b003039f7a8ad0c",
       "text": "The csr::[tvm] (Trap Virtual Memory) bit is a *WARL* field that supports intercepting\nsupervisor virtual-memory management operations. When csr::[tvm]=1, attempts to\nread or write the csr:satp[] CSR or execute an insn:sfence.vma[] or insn:sinval.vma[]\ninstruction while executing in S-mode will raise an illegal-instruction\nexception. When csr::[tvm]=0, these operations are permitted in S-mode. csr::[tvm] is\nread-only 0 when S-mode is not supported or if csr:satp[mode] is read-only 0;\notherwise, it must be writable.",
       "properties": [
@@ -616,7 +616,7 @@
     "norm:mtvec_mode_vectored_op": {
       "rule_id": "norm:mtvec_mode_vectored_op",
       "file": "priv/machine.adoc",
-      "line": 1205,
+      "line": 1206,
       "sha256": "19c7aafc85251850",
       "text": "When csr::[mode]=Vectored, all synchronous exceptions into machine mode cause\nthe `pc` to be set to the address in the csr::[base] field, whereas interrupts\ncause the `pc` to be set to the address in the csr::[base] field plus four\ntimes the interrupt cause number.",
       "properties": [
@@ -805,8 +805,8 @@
       "rule_id": "norm:trap_unexp_hndl_rnmi",
       "file": "priv/machine.adoc",
       "line": 483,
-      "sha256": "87a261719b7d56e8",
-      "text": "When the Smrnmi extension is implemented and csr:mnstatus[nmie] is 1, the hart\n  traps to the RNMI handler. To deliver this trap, the csr:mnepc[] and\n  csr:mncause[] registers are written with the values that the _unexpected trap_ would have\n  written to the csr:mepc[] and csr:mcause[] registers respectively. The privilege\n  mode information fields in the csr:mnstatus[] register are written to indicate\n  M-mode and its csr::[nmie] field is set to 0.",
+      "sha256": "c50a9a0ca3a4dd6e",
+      "text": "When the Smrnmi extension is implemented and csr:mnstatus[nmie] is 1, the hart\n  traps to the RNMI interrupt trap handler. To deliver this trap, the csr:mnepc[] and\n  csr:mncause[] registers are written with the values that the _unexpected trap_ would have\n  written to the csr:mepc[] and csr:mcause[] registers respectively. The privilege\n  mode information fields in the csr:mnstatus[] register are written to indicate\n  M-mode and its csr::[nmie] field is set to 0.",
       "properties": [
         "TrapHandle/DT3"
       ]

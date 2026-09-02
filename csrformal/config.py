@@ -40,9 +40,13 @@ MUTANT_SRC_DIR = os.path.join(ROOT, "mutants-src")
 
 # ---- 规范仓库 ----
 SPEC_REPO = "riscv/riscv-isa-manual"
-# 基线固定在 2026-06-14（f20aa35）：这是香山 PR #6129（2026-06-24 改实现）
-# 之前最后一次动 machine.adoc 的提交，代表「实现作者当时看到的规范文本」。
-BASELINE_REF = "f20aa35ff0890991f8213a667658c7768f581bd1"
+# 权威基线钉在恢复后的 menvcfg_stce_op2（含 or vstimecmp）。
+# 2026-08-24 PR #3344 恢复原文；此处钉 2026-09-02 的 main，避免
+# spec-baseline 默认把 EQ 规格拧回误删版。
+BASELINE_REF = "a5be4cfb5aa9d4d325e43e066ce4aa0713b4a5c7"
+# 误删了 “or vstimecmp” 的时点。只给 demo-spec-drift.sh 用，
+# 不是 EQ 权威；禁止写入 spec/baseline.json。
+DELETED_STCE_REF = "f20aa35ff0890991f8213a667658c7768f581bd1"
 
 
 def classpath() -> str:
