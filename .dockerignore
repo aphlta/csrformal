@@ -1,0 +1,11 @@
+out/
+spec/cache/
+cp.txt
+.git
+__pycache__
+*.pyc
+.pytest_cache
+*.ok
+.DS_Store
+.idea
+.vscode

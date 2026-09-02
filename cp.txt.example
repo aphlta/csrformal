@@ -1,0 +1,14 @@
+# 占位：不要把含本机绝对路径的真实 cp.txt 提交进仓库（已在 .gitignore）。
+#
+# 生成真实文件：
+#   export CSRFORMAL_XS_TREE=/path/to/compiled/XiangShan
+#   ./scripts/gen-cp.sh
+#
+# 手工时，用冒号拼：
+#   $CSRFORMAL_XS_TREE/out/<module>/compile.dest/classes
+#   $CSRFORMAL_XS_TREE/out/<module>/resources.dest
+#   $COURSIER_CACHE/v1/https/repo1.maven.org/maven2/.../*.jar
+#   scala-library / scala-compiler / chisel-plugin 等额外 jar
+#
+# 下面这一行只是格式示意，路径是假的。
+/path/to/XiangShan/out/xiangshan/compile.dest/classes:/path/to/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.17/scala-library-2.13.17.jar

@@ -1,0 +1,15 @@
+# 外部工具锁定表。名字 + 版本 + 建议获取方式。
+# 本文件不声称这些工具已在 Docker / CI 里装好并跑过精化。
+#
+# 工具            版本         用途                         建议获取
+# ---------------------------------------------------------------------------
+yosys             0.68         SystemVerilog → SMT2         https://github.com/YosysHQ/yosys/releases
+                                                        或 xs-env / 自行编译；apt 里的版本通常对不上
+firtool           1.135.0      CHIRRTL → SystemVerilog      CIRCT llvm-firtool 发行包
+                                                        https://github.com/llvm/circt/releases
+JDK               与 XiangShan 一致   精化 harness         跟被测香山树同一套 JDK
+Scala 2.13        与 XiangShan 一致   scalac / chisel-plugin  跟被测香山树同一套（常见 2.13.17）
+z3-solver         >=4.13       SMT（requirements.txt）      pip install -r requirements.txt
+gh                任意         解析规范仓库 ref             GitHub CLI；lint 在钉死 sha 时不需要
+curl              任意         拉 riscv-isa-manual tarball  系统包
+python            >=3.10       本仓库                       系统包 / 发行版

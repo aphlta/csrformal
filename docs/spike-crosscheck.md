@@ -21,10 +21,9 @@ Spike 不参与全输入空间求解。未默认启用：`csrformal check` 要�
 环境变量：`CSRFORMAL_SPIKE`、`CSRFORMAL_RISCV_GCC`、`CSRFORMAL_SPIKE_SRC`。
 实现在 `csrformal/spike_oracle.py`：解析反例里的 priv / addr / wen / STCE，能跑则子进程编一段裸机；不能跑则打印手工步骤。
 
-## 本地资源
+## 源码对照
 
-Spike 源码：`/ssdhome/maoweiming/xiangshan-work/issues/1872/riscv-isa-sim`
-相关文件：`riscv/csrs.cc` 的 `stimecmp_csr_t::verify_permissions`。
+相关文件：riscv-isa-sim 的 `riscv/csrs.cc`，`stimecmp_csr_t::verify_permissions`。
 本仓库开发机上的 spike 二进制因 glibc 过旧无法启动（2026-09-02 探测），所以没有实测数字。
 
 ## 已知 S3 反例的手工步骤（HS, 0x24D, STCE=0）

@@ -1,0 +1,30 @@
+# 只跑不依赖 XiangShan 精化、也不需要本机 cp.txt 的检查。
+# 原因：CI runner 变不出 mill 编过的香山 classpath；挂 `check CSRPermitModule`
+# 只会红，还假装「CI 证明了等价」。换机器的精化仍须自备香山预编译树。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+      - name: Byte-compile
+        run: python -m compileall -q csrformal
+      - name: List properties
+        run: ./bin/csrformal list
+      - name: Lint property metadata
+        # lint 不精化；钉死的 BASELINE_REF 是 40 位 sha，只需 curl 拉规范 tarball。
+        run: ./bin/csrformal lint
+      - name: Spec self-check (no RTL)
+        # permit() ↔ permit_smt()，不读 cp.txt、不调 firtool/yosys。
+        run: ./bin/csrformal spec-selfcheck

@@ -1,33 +1,32 @@
 """全局路径与外部工具配置。
 
-所有路径集中在这里，方便别人 clone 到别的机器后只改一处。
-环境变量优先，便于 CI / 其它机器覆盖而不改代码。
+默认不写本机绝对路径：clone 到另一台机器时用环境变量，不要改源码。
+精化仍须自备已编译的香山树；CI / Docker 不提供 classpath。
 """
 import os
 import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ---- 外部工具 ----
-YOSYS = os.environ.get(
-    "CSRFORMAL_YOSYS", "/ssdhome/maoweiming/anaconda3/envs/eqcheck/bin/yosys")
-FIRTOOL = os.environ.get(
-    "CSRFORMAL_FIRTOOL",
-    "/ssdhome/maoweiming/xiangshan-work/firtool-cache/llvm-firtool/1.135.0/bin/firtool")
-JAVA = os.environ.get("CSRFORMAL_JAVA", shutil.which("java") or "java")
+
+def _tool(env_name: str, exe: str) -> str:
+    return os.environ.get(env_name) or shutil.which(exe) or exe
+
+
+# ---- 外部工具（PATH 或环境变量；版本见 scripts/versions.txt）----
+YOSYS = _tool("CSRFORMAL_YOSYS", "yosys")
+FIRTOOL = _tool("CSRFORMAL_FIRTOOL", "firtool")
+JAVA = _tool("CSRFORMAL_JAVA", "java")
 
 # ---- XiangShan 工作树与 classpath ----
-# cp.txt 是一份「已编译好的 XiangShan 全量 classpath」（74 条，指向
-# XiangShan-b90dbba/out/* 与 coursier 缓存）。有了它就不必跑 mill 全量编译：
-# 只用 scalac 重编被改动的单个 .scala，把产物目录放在 classpath 最前面覆盖即可。
-# 这是把「一次精化」从分钟级压到秒级的关键。
-XS_TREE = os.environ.get(
-    "CSRFORMAL_XS_TREE", "/ssdhome/maoweiming/xiangshan-work/XiangShan-b90dbba")
+# cp.txt 是本机「已编译好的 XiangShan classpath」，指向 $CSRFORMAL_XS_TREE/out/*
+# 与 coursier 缓存。有了它不必跑 mill 全量编译：只用 scalac 重编被改动的单个
+# .scala，把产物目录放在 classpath 最前面覆盖即可。
+# cp.txt 含绝对路径，不进仓库；用 scripts/gen-cp.sh 生成。
+XS_TREE = os.environ.get("CSRFORMAL_XS_TREE", "")
 XS_COMMIT = os.environ.get("CSRFORMAL_XS_COMMIT", "b90dbba4")
 CLASSPATH_FILE = os.path.join(ROOT, "cp.txt")
-CHISEL_PLUGIN = os.environ.get(
-    "CSRFORMAL_CHISEL_PLUGIN",
-    "/ssdhome/maoweiming/eqcheck-scratch/jars2/chisel-plugin_2.13.17-7.3.0.jar")
+CHISEL_PLUGIN = os.environ.get("CSRFORMAL_CHISEL_PLUGIN", "")
 
 # ---- 目录 ----
 OUT_DIR = os.environ.get("CSRFORMAL_OUT", os.path.join(ROOT, "out"))
@@ -50,5 +49,10 @@ DELETED_STCE_REF = "f20aa35ff0890991f8213a667658c7768f581bd1"
 
 
 def classpath() -> str:
+    if not os.path.exists(CLASSPATH_FILE):
+        raise SystemExit(
+            f"缺少 {CLASSPATH_FILE}。设 CSRFORMAL_XS_TREE 后运行 "
+            "scripts/gen-cp.sh，或按 cp.txt.example 手工生成。"
+            "不要把含本机绝对路径的 cp.txt 提交进仓库。")
     with open(CLASSPATH_FILE) as f:
         return f.read().strip()

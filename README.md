@@ -7,6 +7,8 @@ EQ 是带假设的局部等价，不是「符合整本特权规范」。每条�
 当前能打红的确认级差异：`menvcfg.STCE=0` 时 RTL 未门控 `vstimecmp`
 （`CSRPermit/S3` 与 `CSRPermit/EQ-permit` 同红）。
 
+csrformal is licensed under [Mulan PSL v2](LICENSE).
+
 ## 适用范围
 
 `CSRPermitModule` 与 `TrapHandleModule` 精化后 registers=0，是纯组合。
@@ -26,12 +28,14 @@ EQ 是带假设的局部等价，不是「符合整本特权规范」。每条�
 
 ### 外部工具（不由本仓库安装）
 
-| 工具 | 版本 | 用途 | 默认路径（可用环境变量覆盖） |
+| 工具 | 版本 | 用途 | 环境变量（未设则找 PATH） |
 |---|---|---|---|
 | yosys | 0.68 | SystemVerilog → SMT2 | `CSRFORMAL_YOSYS` |
 | firtool | 1.135.0 | CHIRRTL → SystemVerilog | `CSRFORMAL_FIRTOOL` |
 | JDK + Scala 2.13 编译器 | 与 XiangShan 一致 | 精化 harness | `CSRFORMAL_JAVA` |
-| `gh` | 任意 | 拉取规范仓库（本机 git-over-HTTPS 会超时，走 `gh api` + codeload tarball） | — |
+| `gh` | 任意 | 解析规范仓库分支名（钉死 sha 时只需 `curl` 拉 tarball） | — |
+
+版本与获取方式见 `scripts/versions.txt`。本仓库不安装这些外部工具。
 
 ### Python
 
@@ -41,9 +45,26 @@ pip install -r requirements.txt        # 只有 z3-solver
 
 ### XiangShan 工作树与 classpath
 
-`cp.txt` 是一份已编译好的 XiangShan classpath（74 条，指向 `XiangShan-b90dbba/out/*`
-与 coursier 缓存），有了它不必跑 mill 全量编译，精化只需秒级。
-换机器时改 `csrformal/config.py` 里的 `XS_TREE` 与 `cp.txt`，或设 `CSRFORMAL_XS_TREE`。
+精化需要一份**已经 mill 编译过**的 XiangShan 工作树（产物在 `out/`），用环境变量指向它，不要改源码里的路径：
+
+```bash
+export CSRFORMAL_XS_TREE=/path/to/compiled/XiangShan
+# yosys / firtool 不在 PATH 里时：
+export CSRFORMAL_YOSYS=/path/to/yosys
+export CSRFORMAL_FIRTOOL=/path/to/firtool
+# chisel-plugin 若不在 classpath 里：
+export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
+```
+
+`cp.txt` 是本机 classpath（指向 `$CSRFORMAL_XS_TREE/out/*` 与 coursier 缓存），
+含绝对路径，**不进仓库**（已 gitignore）。生成：
+
+```bash
+./scripts/gen-cp.sh                 # 写出 ./cp.txt
+# 或按 cp.txt.example 手工拼一份
+```
+
+换机器仍须自备预编译香山树。登记规模一节里的 `XiangShan-b90dbba` 是当时跑数用的提交，不是本机路径。
 
 ## 怎么跑
 
@@ -283,7 +304,8 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 ## 已知限制
 
 1. 单周期组合逻辑。目前两个模块 registers=0，单周期即完整；但工具不支持时序展开，
-   有状态的模块加进来只能覆盖组合部分。
+   有状态的模块加进来只能覆盖组合部分。扩展到 MStatus/Mip 等有状态模块需要
+   BMC/归纳，与当前组合 EQ 不是同一工程量级。
 2. 跨模块契约是假设。`TrapHandleModule` 的输入 `irToHS` / `irToVS` / `intrVec`
    由 `InterruptFilter` 产生，二者之间的约束（如 `irToVS ⇒ irToHS`）未被验证。
 3. 43 条规则里有一部分性质没有规则 id：AIA 在独立仓库 `riscv/riscv-aia`，
@@ -304,9 +326,30 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
    EQ 绿 ≠ 符合整本规范。假设太松会被无关条款打红，应收紧假设或扩规格，
    不要抄比较器凑绿。
 
+## 可复现性（两层）
+
+**层 1（不精化）**：`python -m compileall`、`./bin/csrformal list`、`lint`、
+`spec-selfcheck`。不需要 `cp.txt`，也不需要 yosys / firtool / 香山树。
+GitHub Actions 和 Dockerfile 只覆盖这一层。
+
+**层 2（精化 / `check` / 变异回归）**：需要已编译的 XiangShan 工作树、
+`CSRFORMAL_XS_TREE`、本机 `cp.txt`，以及 `scripts/versions.txt` 里的 yosys /
+firtool / JDK。换机器做不到一键复现；CI **不**跑 `check CSRPermitModule`。
+
+`Dockerfile` 装 Python 与 `z3-solver`，并提示外部工具。镜像里通常没有
+firtool 1.135.0 / yosys 0.68；精化请用宿主机或 xs-env。此镜像未当作
+「已验证可复现精化」的证据。
+
+## 相关工作
+
+- [riscv-formal](https://github.com/YosysHQ/riscv-formal) / SymbiYosys：检查 RVFI 指令迹，不是香山 Chisel CSR 子模块精化。
+- Sail / Isla：可执行 ISA；香山 RTL 不从 Sail 生成。
+- 本工具：从香山 Chisel 切片精化，性质带规范锚点哈希，并用 spec-drift 标出该重审的范围。EQ 是带假设的局部等价，不能替代上述工具。
+
 ## 参考
 
-- 上一轮的调查报告与证据链：`/ssdhome/maoweiming/csr-hunt/REPORT.md`
-- 被测源码：`XiangShan/src/main/scala/xiangshan/backend/fu/NewCSR/`
+- 被测源码：已编译 XiangShan 工作树中的
+  `src/main/scala/xiangshan/backend/fu/NewCSR/`
   （`CSRPermitModule.scala`、`TrapHandleModule.scala`）
 - 规范：`riscv/riscv-isa-manual`，`src/priv/*.adoc`
+- License：[Mulan PSL v2](LICENSE)

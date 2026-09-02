@@ -11,16 +11,13 @@ from typing import Dict, List, Optional
 
 from . import config
 
-# 本机常见位置；真正能不能跑还要 --help 探测（glibc 不对会在这里失败）。
+# 只认环境变量和 PATH。缺二进制则跳过，不假装存在一份本机安装。
 _CANDIDATES = (
     os.environ.get("CSRFORMAL_SPIKE", ""),
     shutil.which("spike") or "",
-    "/ssdhome/maoweiming/riscv64-ai-agent/third_party/tools/riscv-toolchain-stub/bin/spike",
 )
 
-SPIKE_SRC = os.environ.get(
-    "CSRFORMAL_SPIKE_SRC",
-    "/ssdhome/maoweiming/xiangshan-work/issues/1872/riscv-isa-sim")
+SPIKE_SRC = os.environ.get("CSRFORMAL_SPIKE_SRC", "")
 
 
 @dataclass
@@ -166,7 +163,8 @@ def manual_steps(acc: CexAccess) -> str:
     mode = _mode_name(acc.prvm, acc.v)
     accs = "w" if acc.wen and not acc.ren else (
         "rw" if acc.wen and acc.ren else ("r" if acc.ren else "—"))
-    src = os.path.join(SPIKE_SRC, "riscv", "csrs.cc")
+    src = (os.path.join(SPIKE_SRC, "riscv", "csrs.cc")
+           if SPIKE_SRC else "riscv-isa-sim/riscv/csrs.cc")
     return (
         f"输入：{_mode_name(acc.prvm, acc.v)} addr=0x{acc.addr:03x} "
         f"acc={accs} menvcfg.STCE={int(acc.menvcfg_stce)}\n"
@@ -226,11 +224,7 @@ def _find_gcc() -> Optional[str]:
     env = os.environ.get("CSRFORMAL_RISCV_GCC")
     if env and os.path.isfile(env):
         return env
-    w = shutil.which("riscv64-unknown-elf-gcc")
-    if w:
-        return w
-    known = "/ssdhome/maoweiming/alearn/boot/toolchains/sysroot/usr/bin/riscv64-unknown-elf-gcc"
-    return known if os.path.isfile(known) else None
+    return shutil.which("riscv64-unknown-elf-gcc")
 
 
 def _mcause_to_verdict(cause: int) -> str:
