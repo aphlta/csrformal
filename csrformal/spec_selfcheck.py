@@ -371,17 +371,75 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
     s.add(z3.Not(decls["in_causeNO_Interrupt"]))
     s.add(decls["in_causeNO_ExceptionCode"] == 21)
     s.add(decls["in_memExceptionGPAddr"] == 0x40)
+    s.add(decls["in_memExceptionVAddr"] == 0x1234)
     if s.check() != z3.sat:
         print("FAIL 点测：LS-GPF tval2 与 eq_assumes 冲突")
         bad += 1
     else:
         m = s.model()
         py2 = spec_trap_entry.spec_tval2(False, 21, 0, False, 0x40)
+        pyt = spec_trap_entry.spec_tval(False, 21, 0, False, 0x1234, 0, False)
         if m.eval(spec_tv["tval2"]).as_long() != py2:
             print("FAIL 点测：LS-GPF tval2 Python 与 SMT 不一致")
             bad += 1
+        elif m.eval(spec_tv["tval"]).as_long() != pyt:
+            print("FAIL 点测：LS-GPF tval Python 与 SMT 不一致")
+            bad += 1
         else:
-            print("ok   点测：LS-GPF tval2 = memGPA>>2")
+            print("ok   点测：LS-GPF tval = memVA，tval2 = memGPA>>2")
+
+    s = z3.Solver()
+    s.add(assumes_m)
+    s.add(z3.Not(decls["in_causeNO_Interrupt"]))
+    s.add(decls["in_causeNO_ExceptionCode"] == 13)
+    s.add(decls["in_memExceptionVAddr"] == 0x2000)
+    if s.check() != z3.sat:
+        print("FAIL 点测：LPF tval 与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        pyt = spec_trap_entry.spec_tval(False, 13, 0, False, 0x2000, 0, False)
+        if m.eval(spec_tv["tval"]).as_long() != pyt:
+            print("FAIL 点测：LPF tval Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：LPF tval = memVA")
+
+    s = z3.Solver()
+    s.add(assumes_m)
+    s.add(z3.Not(decls["in_causeNO_Interrupt"]))
+    s.add(decls["in_causeNO_ExceptionCode"] == 2)
+    s.add(decls["in_trapInst_valid"])
+    s.add(decls["in_trapInst_bits"] == 0x13)
+    if s.check() != z3.sat:
+        print("FAIL 点测：II tval 与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        pyt = spec_trap_entry.spec_tval(False, 2, 0, False, 0, 0x13, True)
+        if m.eval(spec_tv["tval"]).as_long() != pyt:
+            print("FAIL 点测：II tval Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：II tval = 指令位")
+
+    s = z3.Solver()
+    s.add(assumes_m)
+    s.add(z3.Not(decls["in_causeNO_Interrupt"]))
+    s.add(decls["in_causeNO_ExceptionCode"] == 12)
+    s.add(decls["in_isCrossPageIPF"])
+    s.add(decls["in_trapPc"] == 0x100)
+    if s.check() != z3.sat:
+        print("FAIL 点测：跨页 IPF tval 与 eq_assumes 冲突")
+        bad += 1
+    else:
+        m = s.model()
+        pyt = spec_trap_entry.spec_tval(False, 12, 0x100, True, 0, 0, False)
+        if m.eval(spec_tv["tval"]).as_long() != pyt:
+            print("FAIL 点测：跨页 IPF tval Python 与 SMT 不一致")
+            bad += 1
+        else:
+            print("ok   点测：跨页 IPF tval = PC+2")
 
     assumes_hs = parse_assumes(z3, decls, spec_trap_entry.eq_assumes_hs())
     spec_hs = spec_trap_entry.trap_entry_hs_smt(z3, decls)
@@ -421,10 +479,22 @@ def _trap_entry_selfcheck(z3, n_random: int) -> int:
         mem_gpa = _trap_int(z3, m, decls["in_memExceptionGPAddr"])
         pc_gpa = _trap_int(z3, m, decls["in_trapPcGPA"])
         py2 = spec_trap_entry.spec_tval2(interrupt, code, pc_gpa, cross, mem_gpa)
+        pyt = spec_trap_entry.spec_tval(
+            interrupt, code,
+            _trap_int(z3, m, decls["in_trapPc"]),
+            cross,
+            _trap_int(z3, m, decls["in_memExceptionVAddr"]),
+            _trap_int(z3, m, decls["in_trapInst_bits"]),
+            bool(_trap_int(z3, m, decls["in_trapInst_valid"])),
+        )
+        smt_tv = m.eval(spec_tv["tval"]).as_long()
+        # exclude 类 Python 为 None，SMT 仍给出 0；两边都不进主定理。
+        tval_ok = pyt is None or smt_tv == pyt
         if (bool(m.eval(spec_m["mpie"])) != py.mpie or
                 m.eval(spec_m["mpp"]).as_long() != py.mpp or
                 bool(m.eval(spec_m["interrupt"])) != py.interrupt or
-                m.eval(spec_tv["tval2"]).as_long() != py2):
+                m.eval(spec_tv["tval2"]).as_long() != py2 or
+                not tval_ok):
             print(f"FAIL 随机点 TrapEntryM priv={spec_trap_entry.mode_name(prvm, v)}")
             bad += 1
             break

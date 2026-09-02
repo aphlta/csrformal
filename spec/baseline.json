@@ -12,7 +12,9 @@
       "text": "The hypervisor extension augments the trap cause encoding.\n<<hcauses>> lists the possible M-mode and HS-mode\ntrap cause codes when the hypervisor extension is implemented. Codes are\nadded for VS-level interrupts (interrupts 2, 6, 10), for\nsupervisor-level guest external interrupts (interrupt 12), for\nvirtual-instruction exceptions (exception 22), and for guest-page faults\n(exceptions 20, 21, 23). Furthermore, environment calls from VS-mode are\nassigned cause 10, whereas those from HS-mode or S-mode use cause 9 as\nusual.",
       "properties": [
         "TrapEntryHS/EQ-tval",
-        "TrapEntryM/EQ-tval"
+        "TrapEntryHS/EQ-tval-data",
+        "TrapEntryM/EQ-tval",
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:H_cause_virtual_instruction": {
@@ -72,8 +74,8 @@
       "sha256": "6fa7c1da02eb91d9",
       "text": "On a virtual-instruction trap, `mtval` or `stval` is written the same as\nfor an illegal-instruction trap.",
       "properties": [
-        "TrapEntryHS/EQ-tval",
-        "TrapEntryM/EQ-tval"
+        "TrapEntryHS/EQ-tval-data",
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:Zicsr_access": {
@@ -753,7 +755,7 @@
       "sha256": "2276291a4d1ca6be",
       "text": "The value loaded into `mtval` on an illegal-instruction exception is\nright-justified and all unused upper bits are cleared to zero.",
       "properties": [
-        "TrapEntryM/EQ-tval"
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:mtval_other_traps_zero": {
@@ -763,7 +765,7 @@
       "sha256": "ca90b8e7c5124a88",
       "text": "For other traps, `mtval` is set to zero",
       "properties": [
-        "TrapEntryM/EQ-tval"
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:mtval_vaddr_wr1": {
@@ -773,7 +775,7 @@
       "sha256": "3ec3363668459c4e",
       "text": "If `mtval` is written with a nonzero value when a breakpoint,\naddress-misaligned, access-fault, page-fault, or hardware-error exception\noccurs on an instruction fetch, load, or store, then `mtval` will contain the\nfaulting virtual address.",
       "properties": [
-        "TrapEntryM/EQ-tval"
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:mtval_varlen_wr": {
@@ -783,7 +785,7 @@
       "sha256": "4b80e82f883967cd",
       "text": "If `mtval` is written with a nonzero value when an instruction\naccess-fault, page-fault, or hardware-error exception occurs on a hart with\nvariable-length instructions, then `mtval` will contain the virtual\naddress of the portion of the instruction that caused the fault",
       "properties": [
-        "TrapEntryM/EQ-tval"
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:mtvec_mode_vectored_op": {
@@ -991,8 +993,8 @@
       "sha256": "4449c25fd31fd9e3",
       "text": "On a breakpoint exception raised by an EBREAK or C.EBREAK instruction, `stval`\nis written with either zero or the virtual address of the instruction.",
       "properties": [
-        "TrapEntryHS/EQ-tval",
-        "TrapEntryM/EQ-tval"
+        "TrapEntryHS/EQ-tval-data",
+        "TrapEntryM/EQ-tval-data"
       ]
     },
     "norm:stval_op_faulting_addr": {
@@ -1002,7 +1004,7 @@
       "sha256": "4f34dbe14fa3ab81",
       "text": "If `stval` is written with a nonzero value when a breakpoint,\naddress-misaligned, access-fault, page-fault, or hardware-error exception\noccurs on an\ninstruction fetch, load, or store, then `stval` will contain the\nfaulting virtual address.",
       "properties": [
-        "TrapEntryHS/EQ-tval"
+        "TrapEntryHS/EQ-tval-data"
       ]
     },
     "norm:stval_op_illegal_instr": {
@@ -1012,7 +1014,7 @@
       "sha256": "33d2af32c0eb9b9c",
       "text": "The `stval` register can optionally also be used to return the faulting\ninstruction bits on an illegal-instruction exception (`sepc` points to\nthe faulting instruction in memory). If `stval` is written with a\nnonzero value when an illegal-instruction exception occurs, then `stval`\nwill contain the shortest of:",
       "properties": [
-        "TrapEntryHS/EQ-tval"
+        "TrapEntryHS/EQ-tval-data"
       ]
     },
     "norm:stval_op_load_store_fault": {
@@ -1022,7 +1024,7 @@
       "sha256": "6f54993785975b92",
       "text": "If `stval` is written with a nonzero value when a misaligned load or\nstore causes an access-fault, page-fault, or hardware-error exception,\nthen `stval` will\ncontain the virtual address of the portion of the access that caused the\nfault.",
       "properties": [
-        "TrapEntryHS/EQ-tval"
+        "TrapEntryHS/EQ-tval-data"
       ]
     },
     "norm:stval_op_other_traps": {
@@ -1032,7 +1034,7 @@
       "sha256": "6095b123edb9457f",
       "text": "For other traps, `stval` is set to zero, but a future standard may\nredefine `stval`’s setting for other traps.",
       "properties": [
-        "TrapEntryHS/EQ-tval"
+        "TrapEntryHS/EQ-tval-data"
       ]
     },
     "norm:trap_unexp_hndl_no_rnmi": {

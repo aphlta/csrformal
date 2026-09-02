@@ -119,9 +119,10 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 
 - `CSRPermitModule` 156 条（case + 3 条 MONO + 1 条 EQ）
 - `TrapHandleModule` 140 条
-- `TrapEntryMEventModule` / `TrapEntryHSEventModule` 各 2 条 EQ
-  （EQ-next：SIE/PP/cause；EQ-tval：按异常类的 tval/tval2/GVA。
-  epc / VS 后置，未验收。BP/SWC/HWE 的精确 tval 排除）
+- `TrapEntryMEventModule` / `TrapEntryHSEventModule` 各 3 条 EQ
+  （EQ-next：SIE/PP/cause；EQ-tval：tval2/GVA；EQ-tval-data：
+  mem=memVA / inst=指令位 / zero=0。
+  epc / VS 后置，未验收。BP/SWC/HWE 与 fetch PC/PC+2（genTrapVA WARL）排除）
 - `TrapEntryDEventModule` 精化后 registers≠0，跳过，不假装时序完整
 - 当前红的是 `CSRPermit/S3` 与 `CSRPermit/EQ-permit`，反例都是
   `vstimecmp` + `menvcfg.STCE=0` 一类。EQ 绿只表示「已建模条款 + 假设关掉的路径」
@@ -174,7 +175,7 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 ./bin/csrformal self-test --report out/reports/self-test.md
 ```
 
-11 个变体。前 10 个约 77 s、行为符合预期；本轮 `te1` 独立验证，KILLED by `TrapEntryM/EQ-tval`
+12 个变体。前 10 个约 77 s、行为符合预期；`te1`/`te2` 独立验证
 （每个变体要单独 scalac 覆盖编译 + 重新精化）：
 
 | 变体 | 类型 | 内容 | 结果 |
@@ -190,6 +191,7 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 | `t5` | defect | `trapToHS` 去掉 `!vs_EX_DT` | KILLED by `DT2` |
 | `pc3` | defect | 回滚 `74fd4f59`：VS 向量化入口 PC 用未映射的中断号 | KILLED by `V3` ×3 |
 | `te1` | defect | LS-GPF 的 `mtval2` 误用 `trapPCGPA` 而非 `trapMemGPA` | KILLED by `TrapEntryM/EQ-tval` |
+| `te2` | defect | 精确 tval 翻了 PC 与 memVA：mem 异常误写 `trapPC` | KILLED by `TrapEntryM/EQ-tval-data` |
 
 `pc1` 上一轮的类型是 defect（历史 bug 重放的阳性对照），依据是当时被误删了 “or vstimecmp”
 的规范文本。规范恢复后该实现变成正确实现，因此改判为 fix 对照，职责是断言 F1 的建议改法
@@ -217,7 +219,7 @@ csrformal/
     __init__.py            模块注册表（性质 + 源文件 + 变异体）
     csr_permit.py          CSRPermitModule 156 条（case + MONO + EQ）
     trap_handle.py         TrapHandleModule 的 140 条性质
-    trap_entry.py          TrapEntry{M,HS} 的 EQ-next 与 EQ-tval
+    trap_entry.py          TrapEntry{M,HS} 的 EQ-next / EQ-tval / EQ-tval-data
 src/eqcheck/Elab2.scala    最小精化 harness（把单个子模块当 top）
 mutants-src/               变异体源码（base_* 与各变异版本）
 spec/baseline.json         权威基线：恢复后的被引用规则原文
@@ -346,10 +348,13 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
 9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
    以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款靠假设关掉。
    `TrapEntryM/EQ-next` 与 `TrapEntryHS/EQ-next` 只比 SIE/PP/cause。
-   `EQ-tval` 按异常类写了 PC/PC+2/memVA/inst/GPA；prove 只比
-   tval2（LS-GPF=GPA>>2，非 GPF=0）和 GVA（GPF=1，中断/ecall=0）。
-   精确 tval 不进 prove（否则要抄 genTrapVA 或钉 fetchMalAddr）。
-   BP（0 或 PC）、SWC、HWE、IGPF 的 tval2 排除。epc / VS 后置，未验收。
+   `EQ-tval` 比 tval2（LS-GPF=GPA>>2，非 GPF=0）和 GVA（GPF=1，中断/ecall=0）。
+   `EQ-tval-data` 比精确 xtval：mem=memVA、inst=指令位、zero=0。
+   fetch 的 PC/PC+2 写在 spec_tval()，不进 prove（genTrapVA WARL；
+   试过低 39 位，反例是非法 satp.MODE / iMode，五道关不可达，不抄 Mux）。
+   `isFetchMalAddr` / `isCrossPageIPF` 不钉在假设里；data 条只在
+   implication 前件排除取指畸形覆盖通道。BP（0 或 PC）、SWC、HWE、
+   IGPF 的 tval2、非叶 PTE 排除。epc / VS 后置，未验收。
    EQ 绿 ≠ 符合整本规范。假设太松会被无关条款打红，应收紧假设或扩规格，
    不要抄比较器凑绿。
 

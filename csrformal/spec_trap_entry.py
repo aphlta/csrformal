@@ -10,8 +10,11 @@ next(priv, status, cause) → 陷入后被规范点名的 CSR 字段。
 本轮交付（审查收窄后）
 --------------------
 1. EQ-next：手册赋值句（SIE/PP/cause/特权）。不含 tval、不含 epc。
-2. EQ-tval：按异常**类**写 xtval / xtval2 / GVA，不抄 Mux1H，
-   不把 genTrapVA / fetchMalAddr 写进规格，不把 tval 和 epc 绑成一条合取。
+2. EQ-tval：tval2 / GVA（不依赖 genTrapVA）。te1 杀这一条。
+3. EQ-tval-data：按异常**类**写精确 xtval（memVA / inst / 0）。
+   fetch 的 PC/PC+2 写在 spec_tval()，不进 prove：连低位也过 genTrapVA，
+   非法 satp.MODE / iMode 时 Mux1H 得 0，那是 WARL，不抄、不钉 MODE。
+   不把 tval 和 epc 绑成一条合取。te2 杀这一条。
 
 异常类（编码来自特权手册 cause 表 / norm:H_cause，不是 Chisel 名）
 --------------------------------------------------------------
@@ -20,6 +23,9 @@ next(priv, status, cause) → 陷入后被规范点名的 CSR 字段。
     （norm:mtval_vaddr_wr1 / norm:mtval_varlen_wr）：
     跨页第二段用 PC+2，否则 PC。PC 取输入 trapPc 零扩展，**不**做
     satp 符号/零扩展（那是 WARL，和 epc 后置同一条债）。
+    64 位和低位都不进 prove：两者都过 genTrapVA。非法 satp.MODE
+    或 iMode 编码时 Mux1H 全假 → 0，这是 WARL，不是选错 PC/memVA。
+    不把 MODE / iMode 钉进假设再报绿。isCrossPageIPF 保持自由。
 * mem：LAM=4, LAF=5, SAM=6, SAF=7, LPF=13, SPF=15, LGPF=21, SGPF=23
     tval = 故障访存 VA（norm:mtval_vaddr_wr1 / norm:stval_op_load_store_fault）
 * inst：II=2, VI=22（VI 与 II 相同，norm:H_virtinst_xtval）
@@ -51,6 +57,8 @@ GVA（norm:mstatus_gva_op / norm:hstatus_gva_op）
 - tinst（同步异常取值不唯一）
 - MDT / SDT、NMI、debug
 - 用假设钉死 isFetchMalAddr / isFetchGuestExcp / isCrossPageIPF 再报绿
+  （三条都保持自由。EQ-tval-data 只在 implication 前件里不宣称
+  fetchMalAddr 覆盖通道；isCrossPageIPF 是 fetch 规格的输入）
 
 别名表：sstatus 是 mstatus 视图。vsstatus 不是，禁止钉成 mstatus。
 """
@@ -97,12 +105,18 @@ CLAUSE_REFS_HS: List[SpecRef] = [
     R["xpie"], R["spie"], R["spp"], R["hs_wr"], R["spvp"], R["alias"],
 ]
 CLAUSE_REFS_TVAL_M: List[SpecRef] = [
-    R["mtval0"], R["mtvalv"], R["mtvalp"], R["mtvali"], R["vi_tv"],
-    R["stvalb"], R["tval2"], R["gva_m"], R["h_cause"],
+    R["tval2"], R["gva_m"], R["h_cause"],
 ]
 CLAUSE_REFS_TVAL_HS: List[SpecRef] = [
+    R["htval"], R["gva_h"], R["h_cause"],
+]
+CLAUSE_REFS_TVAL_DATA_M: List[SpecRef] = [
+    R["mtval0"], R["mtvalv"], R["mtvalp"], R["mtvali"], R["vi_tv"],
+    R["stvalb"], R["h_cause"],
+]
+CLAUSE_REFS_TVAL_DATA_HS: List[SpecRef] = [
     R["stval0"], R["stvalv"], R["stvall"], R["stvali"], R["stvalb"],
-    R["vi_tv"], R["htval"], R["gva_h"], R["h_cause"],
+    R["vi_tv"], R["h_cause"],
 ]
 
 
@@ -359,7 +373,7 @@ def _zext(z3, expr, width: int):
 
 
 def tval_smt(z3, decls: Dict) -> Dict[str, object]:
-    """EQ-tval 的规格表达式。fetch 用 trapPc 零扩展，不调用 genTrapVA。"""
+    """tval / tval2 / GVA 的规格表达式。fetch 用 trapPc 零扩展，不调用 genTrapVA。"""
     interrupt = _d(decls, "in_causeNO_Interrupt")
     code = _d(decls, "in_causeNO_ExceptionCode")
     trap_pc = _zext(z3, _d(decls, "in_trapPc"), TVAL_W)
@@ -452,12 +466,9 @@ def eq_prove_hs(circuit) -> object:
 
 
 def _tval2_gva_prove(z3, decls, tval2_port: str, gva_port: str) -> object:
-    """只把不依赖 genTrapVA / fetchMalAddr 的条款放进待证公式。
+    """tval2 / GVA。精确 xtval 在 EQ-tval-data，不和本条绑合取。
 
-    精确 tval（PC/PC+2/memVA/inst）已在 spec_tval() 里按类写好，
-    但不进 prove：RTL 用 fetchMalAddr 覆盖任意异常的 xtval，再用
-    genTrapVA 改 fetch VA。两边都不抄进规格，也不钉输入再报绿。
-    IGPF 的 tval2 同样会被 fetchMalTval 盖掉，不比。
+    IGPF 的 tval2 会被 fetchMalTval 盖掉，不比。
     HWE 的 GVA 条文没点名，不把 RTL 当 mem 故障写成 GVA=1，也不在
     本轮 prove 里用 GVA=0 打红（未过五关，不混进交付）。
     """
@@ -484,6 +495,47 @@ def eq_prove_hs_tval(circuit) -> object:
     return _tval2_gva_prove(
         circuit.z3, circuit.decls,
         "out_htval_bits_ALL", "out_hstatus_bits_GVA")
+
+
+def _tval_data_prove(z3, decls, tval_port: str) -> object:
+    """精确 xtval，按异常类。不抄 Mux1H，不抄 genTrapVA。
+
+    进 prove 的类（取值不经过 genTrapVA）：
+      * mem  → 故障访存 VA（norm:mtval_vaddr_wr1 / stval load-store）
+      * inst → 提供的指令位，右对齐；未提供则 0
+      * zero → 0（中断 / ecall / 保留 / DT）
+
+    不进 prove：
+      * fetch（IAM/IAF/IPF/IGPF）：PC/PC+2 写在 spec_tval()。64 位和低位
+        都过 genTrapVA；非法 satp.MODE 或 iMode 时 Mux1H 得 0。试过低
+        39 位，反例是 MODE=4 / iMode.PRVM=2，五道关不可达，不是选错
+        PC。不抄 MODE Mux，不钉 satp/iMode/isCrossPageIPF 报绿。
+      * BP（0 或 PC）、SWC、HWE（0 或 VA，单靠 cause 分不出类）。
+
+    isFetchMalAddr 不写进 eq_assumes，保持开放。RTL 用它覆盖任意异常的
+    xtval；那是取指畸形地址通道，不是 mem/inst/zero 的手册取值句。
+    implication 前件排除这条覆盖。isFetchGuestExcp 由 cause=IGPF 决定，不另钉。
+    """
+    spec = tval_smt(z3, decls)
+    # 覆盖通道只当 implication 前件，不当 assume。mal=1 时 EQ-tval 的
+    # tval2/GVA 仍在开放路径上检查。
+    not_mal = z3.Not(_d(decls, "in_isFetchMalAddr"))
+    rtl = decls[tval_port]
+    return z3.And(
+        z3.Implies(z3.And(spec["is_mem"], not_mal), rtl == spec["tval"]),
+        z3.Implies(z3.And(spec["is_inst"], not_mal), rtl == spec["tval"]),
+        z3.Implies(z3.And(spec["is_zero"], not_mal), rtl == spec["tval"]),
+    )
+
+
+def eq_prove_m_tval_data(circuit) -> object:
+    return _tval_data_prove(
+        circuit.z3, circuit.decls, "out_mtval_bits_ALL")
+
+
+def eq_prove_hs_tval_data(circuit) -> object:
+    return _tval_data_prove(
+        circuit.z3, circuit.decls, "out_stval_bits_ALL")
 
 
 def _model_int(model: Dict, name: str, default: int = 0) -> int:

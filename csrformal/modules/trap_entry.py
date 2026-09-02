@@ -4,8 +4,8 @@
 接口是「陷入后各 CSR 的次态」。EQ 对照独立规格 `spec_trap_entry.py`，
 禁止把本文件或 Chisel 条件翻译进规格。
 
-EQ-next 与 EQ-tval 分开：tval 不和 epc 绑成一条合取。epc / VS / MN / D
-本轮不做。
+EQ-next、EQ-tval（tval2/GVA）、EQ-tval-data（精确 xtval）分开：
+tval 不和 epc 绑成一条合取。epc / VS / MN / D 本轮不做。
 
 别名表在 `spec_trap_entry.alias_assumes`：sstatus 是 mstatus 视图。
 """
@@ -41,10 +41,25 @@ PROPS_M = [
         prove_fn=spec_trap_entry.eq_prove_m_tval,
         explain_fn=spec_trap_entry.explain_tval_model,
         extra_refs=spec_trap_entry.CLAUSE_REFS_TVAL_M,
-        ref=SpecRef(None, "TrapEntryM tval/tval2/GVA 异常类合取",
-                    "prove 只含不依赖 genTrapVA/fetchMalAddr 的 tval2 与 GVA。"
-                    "PC/PC+2/memVA/inst 写在 spec_tval()，不进本条 prove，"
-                    "避免钉 isFetchMalAddr 报绿。BP/HWE 排除。不要硬凑 id。"),
+        ref=SpecRef(None, "TrapEntryM tval2/GVA 异常类合取",
+                    "本条只比 tval2 与 GVA。精确 xtval 在 EQ-tval-data，"
+                    "不和本条绑合取。BP/HWE 排除。不要硬凑 id。"),
+        tags=["EQ"]),
+    Property(
+        pid="TrapEntryM/EQ-tval-data",
+        title="陷入 M 后 mtval ≡ 异常类（mem=memVA，inst=指令位，zero=0）",
+        module="TrapEntryMEventModule",
+        assumes=spec_trap_entry.eq_assumes_m(),
+        prove="(and (=> spec.mem (= out.mtval spec.memVA)) "
+              "(=> spec.inst (= out.mtval spec.inst_or_0)) "
+              "(=> spec.zero (= out.mtval 0)))",
+        prove_fn=spec_trap_entry.eq_prove_m_tval_data,
+        explain_fn=spec_trap_entry.explain_tval_model,
+        extra_refs=spec_trap_entry.CLAUSE_REFS_TVAL_DATA_M,
+        ref=SpecRef(None, "TrapEntryM 精确 xtval 异常类合取",
+                    "mem/inst/zero 按手册取值。fetch 的 PC/PC+2 不进 prove"
+                    "（genTrapVA WARL）。不钉 isFetchMalAddr / isCrossPageIPF。"
+                    "BP/SWC/HWE 排除。不要硬凑 id。"),
         tags=["EQ"]),
 ]
 
@@ -77,8 +92,23 @@ PROPS_HS = [
         prove_fn=spec_trap_entry.eq_prove_hs_tval,
         explain_fn=spec_trap_entry.explain_tval_model,
         extra_refs=spec_trap_entry.CLAUSE_REFS_TVAL_HS,
-        ref=SpecRef(None, "TrapEntryHS tval/htval/GVA 异常类合取",
+        ref=SpecRef(None, "TrapEntryHS tval2/GVA 异常类合取",
                     "与 TrapEntryM/EQ-tval 同一套 tval2/GVA 条款，端口换成 "
-                    "htval/hstatus.GVA。精确 stval 不进 prove。"),
+                    "htval/hstatus.GVA。精确 stval 在 EQ-tval-data。"),
+        tags=["EQ"]),
+    Property(
+        pid="TrapEntryHS/EQ-tval-data",
+        title="陷入 HS 后 stval ≡ 异常类（mem=memVA，inst=指令位，zero=0）",
+        module="TrapEntryHSEventModule",
+        assumes=spec_trap_entry.eq_assumes_hs(),
+        prove="(and (=> spec.mem (= out.stval spec.memVA)) "
+              "(=> spec.inst (= out.stval spec.inst_or_0)) "
+              "(=> spec.zero (= out.stval 0)))",
+        prove_fn=spec_trap_entry.eq_prove_hs_tval_data,
+        explain_fn=spec_trap_entry.explain_tval_model,
+        extra_refs=spec_trap_entry.CLAUSE_REFS_TVAL_DATA_HS,
+        ref=SpecRef(None, "TrapEntryHS 精确 xtval 异常类合取",
+                    "与 TrapEntryM/EQ-tval-data 同一套 mem/inst/zero 条款，"
+                    "端口换成 stval。fetch 不进 prove。不抄 genTrapVA，不钉 mal/cross。"),
         tags=["EQ"]),
 ]
