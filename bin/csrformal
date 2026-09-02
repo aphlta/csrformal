@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# csrformal 入口。直接 ./bin/csrformal <子命令> 即可运行，
+# 不需要 pip install，也不需要事先设置 PYTHONPATH。
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec python3 -c "
+import sys
+sys.path.insert(0, '$ROOT')
+from csrformal.cli import main
+sys.exit(main())
+" "$@"

@@ -1,0 +1,675 @@
+{
+  "spec_repo": "riscv/riscv-isa-manual",
+  "commit": "f20aa35ff0890991f8213a667658c7768f581bd1",
+  "commit_date": "2026-06-14T01:04:33Z",
+  "rule_count": 43,
+  "rules": {
+    "norm:Zicsr_access": {
+      "rule_id": "norm:Zicsr_access",
+      "file": "priv/csrs.adoc",
+      "line": 31,
+      "sha256": "1cc64ecee4860c55",
+      "text": "The next two bits (csr[9:8]) encode the lowest privilege level that can access the CSR, with the pattern `10` representing hypervisor CSRs.",
+      "properties": [
+        "CSRPermit/R1[cycle]",
+        "CSRPermit/R1[cycleh]",
+        "CSRPermit/R1[mvendorid]",
+        "CSRPermit/R1[stopi]"
+      ]
+    },
+    "norm:hcounteren_acc": {
+      "rule_id": "norm:hcounteren_acc",
+      "file": "priv/hypervisor.adoc",
+      "line": 867,
+      "sha256": "b0d58aedb0d168fa",
+      "text": "In addition, when the TM bit in the `hcounteren` register is clear, attempts to\naccess the `vstimecmp` register (via `stimecmp`) while executing in VS-mode will\ncause a virtual-instruction exception if the same bit in `mcounteren` is set.\nWhen this bit and the same bit in `mcounteren` are both set, access to the\n`vstimecmp` register (if implemented) is permitted in VS-mode.",
+      "properties": [
+        "CSRPermit/S4",
+        "CSRPermit/S8"
+      ]
+    },
+    "norm:hcounteren_op": {
+      "rule_id": "norm:hcounteren_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 857,
+      "sha256": "049abfcf2f8d74f3",
+      "text": "When the CY, TM, IR, or HPM__n__ bit in the `hcounteren` register is\nclear, attempts to read the `cycle`, `time`, `instret`, or\n`hpmcounter` _n_ register while V=1 will cause a virtual-instruction\nexception if the same bit in `mcounteren` is 1. When one of these bits\nis set, access to the corresponding register is permitted when V=1,\nunless prevented for some other reason. In VU-mode, a counter is not\nreadable unless the applicable bits are set in both `hcounteren` and\n`scounteren`.",
+      "properties": [
+        "CSRPermit/C3[cycle]",
+        "CSRPermit/C3[hpm31]",
+        "CSRPermit/C3[hpm5]",
+        "CSRPermit/C3[instret]",
+        "CSRPermit/C3[time]",
+        "CSRPermit/C4[cycle]",
+        "CSRPermit/C4[hpm31]",
+        "CSRPermit/C4[hpm5]",
+        "CSRPermit/C4[instret]",
+        "CSRPermit/C4[time]",
+        "CSRPermit/C4s[cycle]",
+        "CSRPermit/C4s[hpm31]",
+        "CSRPermit/C4s[hpm5]",
+        "CSRPermit/C4s[instret]",
+        "CSRPermit/C4s[time]",
+        "CSRPermit/C6[cycle]",
+        "CSRPermit/C6[hpm31]",
+        "CSRPermit/C6[hpm5]",
+        "CSRPermit/C6[instret]",
+        "CSRPermit/C6[time]"
+      ]
+    },
+    "norm:hedeleg_op": {
+      "rule_id": "norm:hedeleg_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 365,
+      "sha256": "087dd912b3635e47",
+      "text": "A synchronous trap that has been delegated to HS-mode (using `medeleg`)\nis further delegated to VS-mode if V=1 before the trap and the\ncorresponding `hedeleg` bit is set.",
+      "properties": [
+        "TrapHandle/D3[e=12,VS]",
+        "TrapHandle/D3[e=12,VU]",
+        "TrapHandle/D3[e=13,VS]",
+        "TrapHandle/D3[e=13,VU]",
+        "TrapHandle/D3[e=15,VS]",
+        "TrapHandle/D3[e=15,VU]",
+        "TrapHandle/D3[e=18,VS]",
+        "TrapHandle/D3[e=18,VU]",
+        "TrapHandle/D3[e=19,VS]",
+        "TrapHandle/D3[e=19,VU]",
+        "TrapHandle/D3[e=2,VS]",
+        "TrapHandle/D3[e=2,VU]",
+        "TrapHandle/D3[e=3,VS]",
+        "TrapHandle/D3[e=3,VU]",
+        "TrapHandle/D3[e=5,VS]",
+        "TrapHandle/D3[e=5,VU]",
+        "TrapHandle/D3[e=8,VS]",
+        "TrapHandle/D3[e=8,VU]",
+        "TrapHandle/D4[e=12,VS]",
+        "TrapHandle/D4[e=12,VU]",
+        "TrapHandle/D4[e=13,VS]",
+        "TrapHandle/D4[e=13,VU]",
+        "TrapHandle/D4[e=15,VS]",
+        "TrapHandle/D4[e=15,VU]",
+        "TrapHandle/D4[e=18,VS]",
+        "TrapHandle/D4[e=18,VU]",
+        "TrapHandle/D4[e=19,VS]",
+        "TrapHandle/D4[e=19,VU]",
+        "TrapHandle/D4[e=2,VS]",
+        "TrapHandle/D4[e=2,VU]",
+        "TrapHandle/D4[e=3,VS]",
+        "TrapHandle/D4[e=3,VU]",
+        "TrapHandle/D4[e=5,VS]",
+        "TrapHandle/D4[e=5,VU]",
+        "TrapHandle/D4[e=8,VS]",
+        "TrapHandle/D4[e=8,VU]",
+        "TrapHandle/D5[e=12,VS]",
+        "TrapHandle/D5[e=12,VU]",
+        "TrapHandle/D5[e=13,VS]",
+        "TrapHandle/D5[e=13,VU]",
+        "TrapHandle/D5[e=15,VS]",
+        "TrapHandle/D5[e=15,VU]",
+        "TrapHandle/D5[e=18,VS]",
+        "TrapHandle/D5[e=18,VU]",
+        "TrapHandle/D5[e=19,VS]",
+        "TrapHandle/D5[e=19,VU]",
+        "TrapHandle/D5[e=2,VS]",
+        "TrapHandle/D5[e=2,VU]",
+        "TrapHandle/D5[e=3,VS]",
+        "TrapHandle/D5[e=3,VU]",
+        "TrapHandle/D5[e=5,VS]",
+        "TrapHandle/D5[e=5,VU]",
+        "TrapHandle/D5[e=8,VS]",
+        "TrapHandle/D5[e=8,VU]"
+      ]
+    },
+    "norm:henvcfg_stce": {
+      "rule_id": "norm:henvcfg_stce",
+      "file": "priv/hypervisor.adoc",
+      "line": 746,
+      "sha256": "9e4e77a70bd5ed03",
+      "text": "The Sstc extension adds the `STCE` (STimecmp Enable) bit to `henvcfg` CSR. When\nthe Sstc extension is not implemented, `STCE` is read-only zero. The `STCE` bit\nenables `vstimecmp` for VS-mode when set to one. When `STCE` bit is `henvcfg` is\nzero, an attempt to access `stimecmp` (really `vstimecmp`) when V=1 raises a\nvirtual-instruction exception, and `VSTIP` in `hip` reverts to its defined behavior\nas if this extension is not implemented.",
+      "properties": [
+        "CSRPermit/S5"
+      ]
+    },
+    "norm:hgatp_tvm_illegal": {
+      "rule_id": "norm:hgatp_tvm_illegal",
+      "file": "priv/hypervisor.adoc",
+      "line": 999,
+      "sha256": "4d90d90213915dae",
+      "text": "When `mstatus`.TVM=1, attempts to read or write `hgatp` while\nexecuting in HS-mode will raise an illegal-instruction exception.",
+      "properties": [
+        "CSRPermit/T2"
+      ]
+    },
+    "norm:hideleg_op": {
+      "rule_id": "norm:hideleg_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 386,
+      "sha256": "2b00f9bf760a4f92",
+      "text": "An interrupt that has been delegated to HS-mode (using `mideleg`) is\nfurther delegated to VS-mode if the corresponding `hideleg` bit is set.",
+      "properties": [
+        "TrapHandle/I4[n=10]",
+        "TrapHandle/I4[n=2]",
+        "TrapHandle/I4[n=6]",
+        "TrapHandle/I5[n=10]",
+        "TrapHandle/I5[n=2]",
+        "TrapHandle/I5[n=6]"
+      ]
+    },
+    "norm:hideleg_trans": {
+      "rule_id": "norm:hideleg_trans",
+      "file": "priv/hypervisor.adoc",
+      "line": 393,
+      "sha256": "96d3f7dd10c5bda1",
+      "text": "When a virtual supervisor external interrupt (code 10) is delegated to\nVS-mode, it is automatically translated by the machine into a supervisor\nexternal interrupt (code 9) for VS-mode, including the value written to\n`vscause` on an interrupt trap. Likewise, a virtual supervisor timer\ninterrupt (6) is translated into a supervisor timer interrupt (5) for\nVS-mode, and a virtual supervisor software interrupt (2) is translated\ninto a supervisor software interrupt (1) for VS-mode. Similar\ntranslations may or may not be done for platform interrupt\ncauses (codes 16 and above).",
+      "properties": [
+        "TrapHandle/V3[n=10]",
+        "TrapHandle/V3[n=2]",
+        "TrapHandle/V3[n=6]"
+      ]
+    },
+    "norm:hstateen0_aia_op": {
+      "rule_id": "norm:hstateen0_aia_op",
+      "file": "priv/smstateen.adoc",
+      "line": 296,
+      "sha256": "659f193da2d1c45b",
+      "text": "The AIA bit in `hstateen0` controls access to all state introduced by the\nSsaia extension and not controlled by either the CSRIND or the IMSIC\nbits of `hstateen0`.",
+      "properties": [
+        "CSRPermit/EH.AIA[stopi]"
+      ]
+    },
+    "norm:hstateen0_context_op": {
+      "rule_id": "norm:hstateen0_context_op",
+      "file": "priv/smstateen.adoc",
+      "line": 301,
+      "sha256": "239a6a829623ae41",
+      "text": "The CONTEXT bit in\n`hstateen0` controls access to the `scontext` CSR provided by the Sdtrig\nextension.",
+      "properties": [
+        "CSRPermit/EH.CONTEXT[scontext]"
+      ]
+    },
+    "norm:hstateen0_csrind_op": {
+      "rule_id": "norm:hstateen0_csrind_op",
+      "file": "priv/smstateen.adoc",
+      "line": 279,
+      "sha256": "3b0087538a72ea4a",
+      "text": "The CSRIND bit in `hstateen0` controls access to the `siselect` and the\n`sireg*`, (really `vsiselect` and `vsireg*`) CSRs provided by the Sscsrind\nextensions.",
+      "properties": [
+        "CSRPermit/EH.CSRIND[sireg]",
+        "CSRPermit/EH.CSRIND[siselect]",
+        "CSRPermit/ID-D2"
+      ]
+    },
+    "norm:hstateen0_envcfg_op": {
+      "rule_id": "norm:hstateen0_envcfg_op",
+      "file": "priv/smstateen.adoc",
+      "line": 274,
+      "sha256": "51c7285be5aa5dc0",
+      "text": "The ENVCFG bit in `hstateen0` controls access to the\n`senvcfg` CSRs.",
+      "properties": [
+        "CSRPermit/EH.ENVCFG[senvcfg]"
+      ]
+    },
+    "norm:hstateen0_imsic_op": {
+      "rule_id": "norm:hstateen0_imsic_op",
+      "file": "priv/smstateen.adoc",
+      "line": 284,
+      "sha256": "0b1f4931e0fd1720",
+      "text": "The IMSIC bit in\n`hstateen0` controls access to the guest IMSIC state, including CSRs `stopei`\n(really `vstopei`), provided by the Ssaia extension.",
+      "properties": [
+        "CSRPermit/EH.IMSIC[stopei]"
+      ]
+    },
+    "norm:hstateen_bit_63_op": {
+      "rule_id": "norm:hstateen_bit_63_op",
+      "file": "priv/smstateen.adoc",
+      "line": 165,
+      "sha256": "e98d78eb3683a164",
+      "text": "Likewise, bit 63 of each `hstateen`\ncorrespondingly controls access to the matching `sstateen` CSR.",
+      "properties": [
+        "CSRPermit/E3[0]",
+        "CSRPermit/E3[1]",
+        "CSRPermit/E3[2]",
+        "CSRPermit/E3[3]"
+      ]
+    },
+    "norm:hstatus_vgein_op": {
+      "rule_id": "norm:hstatus_vgein_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 254,
+      "sha256": "6460194257b802ab",
+      "text": "The VGEIN (Virtual Guest External Interrupt Number) field selects a\nguest external interrupt source for VS-level external interrupts. VGEIN\nis a *WLRL* field that must be able to hold values between zero and the\nmaximum guest external interrupt number (known as GEILEN), inclusive.\nWhen VGEIN=0, no guest external interrupt source is selected for\nVS-level external interrupts. GEILEN may be zero, in which case VGEIN\nmay be read-only zero. Guest external interrupts are explained in\n<<hgeinterruptregs>>, and the use of VGEIN is covered\nfurther in <<hinterruptregs>>.",
+      "properties": [
+        "CSRPermit/A1",
+        "CSRPermit/A2",
+        "CSRPermit/A3",
+        "CSRPermit/A4",
+        "CSRPermit/A5"
+      ]
+    },
+    "norm:hstatus_vtvm_op": {
+      "rule_id": "norm:hstatus_vtvm_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 249,
+      "sha256": "945532f896aa4017",
+      "text": "When VTVM=1, an attempt in\nVS-mode to execute SFENCE.VMA or SINVAL.VMA or to access CSR `satp`\nraises a virtual-instruction exception.",
+      "properties": [
+        "CSRPermit/T3",
+        "CSRPermit/T6"
+      ]
+    },
+    "norm:mcounteren_clr_ill_inst_exc": {
+      "rule_id": "norm:mcounteren_clr_ill_inst_exc",
+      "file": "priv/machine.adoc",
+      "line": 1568,
+      "sha256": "ebe0e165142c7b6b",
+      "text": "When the csr::[cy], csr::[tm], csr::[ir], or HPM__n__ bit in the csr:mcounteren[] register is\nclear, attempts to read the csr:cycle[], csr:time[], csr:instret[], or\n`hpmcounter__n__` register while executing in S-mode or U-mode will cause an\nillegal-instruction exception.",
+      "properties": [
+        "CSRPermit/C1[cycle]",
+        "CSRPermit/C1[hpm31]",
+        "CSRPermit/C1[hpm5]",
+        "CSRPermit/C1[instret]",
+        "CSRPermit/C1[time]",
+        "CSRPermit/C1u[cycle]",
+        "CSRPermit/C1u[hpm31]",
+        "CSRPermit/C1u[hpm5]",
+        "CSRPermit/C1u[instret]",
+        "CSRPermit/C1u[time]"
+      ]
+    },
+    "norm:mcounteren_set_nxt_priv": {
+      "rule_id": "norm:mcounteren_set_nxt_priv",
+      "file": "priv/machine.adoc",
+      "line": 1572,
+      "sha256": "d351bc139ef40d51",
+      "text": "When one of these bits is set, access to\nthe corresponding register is permitted in the next implemented\nprivilege mode (S-mode if implemented, otherwise U-mode).",
+      "properties": [
+        "CSRPermit/C5[cycle]",
+        "CSRPermit/C5[hpm31]",
+        "CSRPermit/C5[hpm5]",
+        "CSRPermit/C5[instret]",
+        "CSRPermit/C5[time]"
+      ]
+    },
+    "norm:mcounteren_tm_clr": {
+      "rule_id": "norm:mcounteren_tm_clr",
+      "file": "priv/machine.adoc",
+      "line": 1586,
+      "sha256": "298b93a3738001f8",
+      "text": "when the csr:[tm] bit in the csr:mcounteren[] register is clear, attempts to\naccess the csr:stimecmp[] or csr:vstimecmp[] register while executing in a mode less\nprivileged than M will cause an illegal-instruction exception.",
+      "properties": [
+        "CSRPermit/S1a",
+        "CSRPermit/S1b",
+        "CSRPermit/S1c"
+      ]
+    },
+    "norm:mcounteren_tm_set": {
+      "rule_id": "norm:mcounteren_tm_set",
+      "file": "priv/machine.adoc",
+      "line": 1589,
+      "sha256": "a05476fc9d6d8528",
+      "text": "When this bit is set, access to the csr:stimecmp[] or csr:vstimecmp[] register is permitted in S-mode\nif implemented, and access to the csr:vstimecmp[] register (via csr:stimecmp[]) is\npermitted in VS-mode if implemented and not otherwise prevented by the csr::[tm] bit in\ncsr:hcounteren[].",
+      "properties": [
+        "CSRPermit/S6",
+        "CSRPermit/S7"
+      ]
+    },
+    "norm:medeleg_mideleg_op2": {
+      "rule_id": "norm:medeleg_mideleg_op2",
+      "file": "priv/machine.adoc",
+      "line": 1238,
+      "sha256": "0ba784162d794ddb",
+      "text": "setting a bit in csr:medeleg[] or csr:mideleg[] will delegate the\ncorresponding trap, when occurring in S-mode or U-mode, to the S-mode\ntrap handler.",
+      "properties": [
+        "TrapHandle/D1[e=12,HS]",
+        "TrapHandle/D1[e=12,HU]",
+        "TrapHandle/D1[e=13,HS]",
+        "TrapHandle/D1[e=13,HU]",
+        "TrapHandle/D1[e=15,HS]",
+        "TrapHandle/D1[e=15,HU]",
+        "TrapHandle/D1[e=18,HS]",
+        "TrapHandle/D1[e=18,HU]",
+        "TrapHandle/D1[e=19,HS]",
+        "TrapHandle/D1[e=19,HU]",
+        "TrapHandle/D1[e=2,HS]",
+        "TrapHandle/D1[e=2,HU]",
+        "TrapHandle/D1[e=3,HS]",
+        "TrapHandle/D1[e=3,HU]",
+        "TrapHandle/D1[e=5,HS]",
+        "TrapHandle/D1[e=5,HU]",
+        "TrapHandle/D1[e=8,HS]",
+        "TrapHandle/D1[e=8,HU]",
+        "TrapHandle/D2[e=12,HS]",
+        "TrapHandle/D2[e=12,HU]",
+        "TrapHandle/D2[e=13,HS]",
+        "TrapHandle/D2[e=13,HU]",
+        "TrapHandle/D2[e=15,HS]",
+        "TrapHandle/D2[e=15,HU]",
+        "TrapHandle/D2[e=18,HS]",
+        "TrapHandle/D2[e=18,HU]",
+        "TrapHandle/D2[e=19,HS]",
+        "TrapHandle/D2[e=19,HU]",
+        "TrapHandle/D2[e=2,HS]",
+        "TrapHandle/D2[e=2,HU]",
+        "TrapHandle/D2[e=3,HS]",
+        "TrapHandle/D2[e=3,HU]",
+        "TrapHandle/D2[e=5,HS]",
+        "TrapHandle/D2[e=5,HU]",
+        "TrapHandle/D2[e=8,HS]",
+        "TrapHandle/D2[e=8,HU]",
+        "TrapHandle/D6[e=12]",
+        "TrapHandle/D6[e=13]",
+        "TrapHandle/D6[e=15]",
+        "TrapHandle/D6[e=18]",
+        "TrapHandle/D6[e=19]",
+        "TrapHandle/D6[e=2]",
+        "TrapHandle/D6[e=3]",
+        "TrapHandle/D6[e=5]",
+        "TrapHandle/D6[e=8]",
+        "TrapHandle/I1[n=13]",
+        "TrapHandle/I1[n=1]",
+        "TrapHandle/I1[n=5]",
+        "TrapHandle/I1[n=9]",
+        "TrapHandle/I2[n=13]",
+        "TrapHandle/I2[n=1]",
+        "TrapHandle/I2[n=5]",
+        "TrapHandle/I2[n=9]",
+        "TrapHandle/I3[n=13]",
+        "TrapHandle/I3[n=1]",
+        "TrapHandle/I3[n=5]",
+        "TrapHandle/I3[n=9]"
+      ]
+    },
+    "norm:menvcfg_stce_op2": {
+      "rule_id": "norm:menvcfg_stce_op2",
+      "file": "priv/machine.adoc",
+      "line": 2222,
+      "sha256": "59c33250aeb8103c",
+      "text": "The `STCE` bit enables `stimecmp` for S-mode when set to one.\nWhen this extension is implemented and `STCE` in `menvcfg` is zero, an attempt to access `stimecmp`\nin a mode other than M-mode raises an illegal-instruction exception, `STCE` in\n`henvcfg` is read-only zero, and `STIP` in `mip` and `sip` reverts to its\ndefined behavior as if this extension is not implemented. Further, if the H\nextension is implemented, then `hip`.VSTIP also reverts its defined behavior as\nif this extension is not implemented.",
+      "properties": [
+        "CSRPermit/S2",
+        "CSRPermit/S3",
+        "CSRPermit/S3b"
+      ]
+    },
+    "norm:mstateen0_aia_op": {
+      "rule_id": "norm:mstateen0_aia_op",
+      "file": "priv/smstateen.adoc",
+      "line": 294,
+      "sha256": "926d1f5d97cc943d",
+      "text": "The AIA bit in `mstateen0` controls access to all state introduced by the\nSsaia extension and not controlled by either the CSRIND or the IMSIC\nbits.",
+      "properties": [
+        "CSRPermit/EM.AIA[hvictl]",
+        "CSRPermit/EM.AIA[hvien]",
+        "CSRPermit/EM.AIA[hviprio1]",
+        "CSRPermit/EM.AIA[hviprio2]",
+        "CSRPermit/EM.AIA[stopi]",
+        "CSRPermit/EM.AIA[vstopi]"
+      ]
+    },
+    "norm:mstateen0_context_op": {
+      "rule_id": "norm:mstateen0_context_op",
+      "file": "priv/smstateen.adoc",
+      "line": 300,
+      "sha256": "ee9a156f92a6610a",
+      "text": "The CONTEXT bit in `mstateen0` controls access to the `scontext` and\n`hcontext` CSRs provided by the Sdtrig extension.",
+      "properties": [
+        "CSRPermit/EM.CONTEXT[hcontext]",
+        "CSRPermit/EM.CONTEXT[scontext]"
+      ]
+    },
+    "norm:mstateen0_csrind_op": {
+      "rule_id": "norm:mstateen0_csrind_op",
+      "file": "priv/smstateen.adoc",
+      "line": 277,
+      "sha256": "1be91cbc697e8e3d",
+      "text": "The CSRIND bit in `mstateen0` controls access to the `siselect`, `sireg*`,\n`vsiselect`, and the `vsireg*` CSRs provided by the Sscsrind extensions.",
+      "properties": [
+        "CSRPermit/EM.CSRIND[sireg]",
+        "CSRPermit/EM.CSRIND[siselect]",
+        "CSRPermit/EM.CSRIND[vsireg]",
+        "CSRPermit/EM.CSRIND[vsiselect]",
+        "CSRPermit/ID-D1"
+      ]
+    },
+    "norm:mstateen0_envcfg_op": {
+      "rule_id": "norm:mstateen0_envcfg_op",
+      "file": "priv/smstateen.adoc",
+      "line": 273,
+      "sha256": "05bce8017bf70301",
+      "text": "The ENVCFG bit in `mstateen0` controls access to the `henvcfg`, `henvcfgh`,\nand the `senvcfg` CSRs.",
+      "properties": [
+        "CSRPermit/EM.ENVCFG[henvcfg]",
+        "CSRPermit/EM.ENVCFG[senvcfg]"
+      ]
+    },
+    "norm:mstateen0_imsic_op": {
+      "rule_id": "norm:mstateen0_imsic_op",
+      "file": "priv/smstateen.adoc",
+      "line": 283,
+      "sha256": "9708afcaf2dca254",
+      "text": "The IMSIC bit in `mstateen0` controls access to the IMSIC state, including\nCSRs `stopei` and `vstopei`, provided by the Ssaia extension.",
+      "properties": [
+        "CSRPermit/EM.IMSIC[stopei]",
+        "CSRPermit/EM.IMSIC[vstopei]"
+      ]
+    },
+    "norm:mstateen_bit_63_op": {
+      "rule_id": "norm:mstateen_bit_63_op",
+      "file": "priv/smstateen.adoc",
+      "line": 162,
+      "sha256": "539db7999dbcefc9",
+      "text": "For each `mstateen` CSR, bit 63 is defined to control access to the\nmatching `sstateen` and `hstateen` CSRs.",
+      "properties": [
+        "CSRPermit/E1[0]",
+        "CSRPermit/E1[1]",
+        "CSRPermit/E1[2]",
+        "CSRPermit/E1[3]",
+        "CSRPermit/E2[0]",
+        "CSRPermit/E2[1]",
+        "CSRPermit/E2[2]",
+        "CSRPermit/E2[3]"
+      ]
+    },
+    "norm:mstatus_tvm_warl_op": {
+      "rule_id": "norm:mstatus_tvm_warl_op",
+      "file": "priv/machine.adoc",
+      "line": 732,
+      "sha256": "0b003039f7a8ad0c",
+      "text": "The csr::[tvm] (Trap Virtual Memory) bit is a *WARL* field that supports intercepting\nsupervisor virtual-memory management operations. When csr::[tvm]=1, attempts to\nread or write the csr:satp[] CSR or execute an insn:sfence.vma[] or insn:sinval.vma[]\ninstruction while executing in S-mode will raise an illegal-instruction\nexception. When csr::[tvm]=0, these operations are permitted in S-mode. csr::[tvm] is\nread-only 0 when S-mode is not supported or if csr:satp[mode] is read-only 0;\notherwise, it must be writable.",
+      "properties": [
+        "CSRPermit/T1",
+        "CSRPermit/T4",
+        "CSRPermit/T5"
+      ]
+    },
+    "norm:mtvec_mode_vectored_op": {
+      "rule_id": "norm:mtvec_mode_vectored_op",
+      "file": "priv/machine.adoc",
+      "line": 1205,
+      "sha256": "19c7aafc85251850",
+      "text": "When csr::[mode]=Vectored, all synchronous exceptions into machine mode cause\nthe `pc` to be set to the address in the csr::[base] field, whereas interrupts\ncause the `pc` to be set to the address in the csr::[base] field plus four\ntimes the interrupt cause number.",
+      "properties": [
+        "TrapHandle/V1[n=13]",
+        "TrapHandle/V1[n=1]",
+        "TrapHandle/V1[n=5]",
+        "TrapHandle/V1[n=63]",
+        "TrapHandle/V1[n=9]",
+        "TrapHandle/V4[e=12]",
+        "TrapHandle/V4[e=13]",
+        "TrapHandle/V4[e=2]"
+      ]
+    },
+    "norm:scounteren_op": {
+      "rule_id": "norm:scounteren_op",
+      "file": "priv/supervisor.adoc",
+      "line": 512,
+      "sha256": "6c6fcc2c6d56d513",
+      "text": "When the CY, TM, IR, or HPM__n__ bit in the `scounteren` register is\nclear, attempts to read the `cycle`, `time`, `instret`, or `hpmcountern`\nregister while executing in U-mode will cause an illegal-instruction\nexception. When one of these bits is set, access to the corresponding\nregister is permitted.",
+      "properties": [
+        "CSRPermit/C2[cycle]",
+        "CSRPermit/C2[hpm31]",
+        "CSRPermit/C2[hpm5]",
+        "CSRPermit/C2[instret]",
+        "CSRPermit/C2[time]",
+        "CSRPermit/C7[cycle]",
+        "CSRPermit/C7[hpm31]",
+        "CSRPermit/C7[hpm5]",
+        "CSRPermit/C7[instret]",
+        "CSRPermit/C7[time]"
+      ]
+    },
+    "norm:smcdeleg_cde_en": {
+      "rule_id": "norm:smcdeleg_cde_en",
+      "file": "priv/smcdeleg.adoc",
+      "line": 37,
+      "sha256": "0f5310bafe698229",
+      "text": "When the Smcdeleg/Ssccfg extensions are enabled (`menvcfg`.CDE=1), it further allows M-mode to delegate select counters to S-mode.",
+      "properties": [
+        "CSRPermit/ID-A2[sireg1]",
+        "CSRPermit/ID-A2[sireg2]"
+      ]
+    },
+    "norm:ssccfg_hyp_m_s_vsireg_illegal": {
+      "rule_id": "norm:ssccfg_hyp_m_s_vsireg_illegal",
+      "file": "priv/smcdeleg.adoc",
+      "line": 105,
+      "sha256": "57b0000ce684ff0c",
+      "text": "An attempt to access any `vsireg*` from M or S mode raises an illegal-instruction exception.",
+      "properties": [
+        "CSRPermit/ID-B1[vsireg1]",
+        "CSRPermit/ID-B1[vsireg2]",
+        "CSRPermit/ID-B1[vsireg3]",
+        "CSRPermit/ID-B1[vsireg4]",
+        "CSRPermit/ID-B1[vsireg6]",
+        "CSRPermit/ID-B1s[vsireg1]",
+        "CSRPermit/ID-B1s[vsireg2]",
+        "CSRPermit/ID-B1s[vsireg3]",
+        "CSRPermit/ID-B1s[vsireg4]",
+        "CSRPermit/ID-B1s[vsireg6]"
+      ]
+    },
+    "norm:ssccfg_hyp_vs_access_sireg_conditional": {
+      "rule_id": "norm:ssccfg_hyp_vs_access_sireg_conditional",
+      "file": "priv/smcdeleg.adoc",
+      "line": 106,
+      "sha256": "184757ba5780b9e3",
+      "text": "An attempt from VS-mode to access any `sireg*` (really `vsireg*`) raises an illegal-instruction exception if `menvcfg`.CDE = 0, or a virtual-instruction exception if `menvcfg`.CDE = 1.",
+      "properties": [
+        "CSRPermit/ID-B2a[sireg1]",
+        "CSRPermit/ID-B2a[sireg2]",
+        "CSRPermit/ID-B2a[sireg3]",
+        "CSRPermit/ID-B2a[sireg6]",
+        "CSRPermit/ID-B2b[sireg1]",
+        "CSRPermit/ID-B2b[sireg2]",
+        "CSRPermit/ID-B2b[sireg3]",
+        "CSRPermit/ID-B2b[sireg6]"
+      ]
+    },
+    "norm:ssccfg_illegal_sireg3_6": {
+      "rule_id": "norm:ssccfg_illegal_sireg3_6",
+      "file": "priv/smcdeleg.adoc",
+      "line": 85,
+      "sha256": "e7731796fd099064",
+      "text": "attempts to access `sireg3` or `sireg6`;",
+      "properties": [
+        "CSRPermit/ID-A2b[sireg3]",
+        "CSRPermit/ID-A2b[sireg6]"
+      ]
+    },
+    "norm:ssccfg_illegal_sireg4_5_xlen64": {
+      "rule_id": "norm:ssccfg_illegal_sireg4_5_xlen64",
+      "file": "priv/smcdeleg.adoc",
+      "line": 86,
+      "sha256": "b6ec3706c12eccdc",
+      "text": "attempts to access `sireg4` or `sireg5` when XLEN = 64;",
+      "properties": [
+        "CSRPermit/ID-A2b[sireg4]",
+        "CSRPermit/ID-A2b[sireg5]"
+      ]
+    },
+    "norm:ssccfg_illegal_sireg_cde0": {
+      "rule_id": "norm:ssccfg_illegal_sireg_cde0",
+      "file": "priv/smcdeleg.adoc",
+      "line": 84,
+      "sha256": "4f88c780e5674f3e",
+      "text": "attempts to access any `sireg*` when `menvcfg`.CDE = 0;",
+      "properties": [
+        "CSRPermit/ID-A1[sireg1]",
+        "CSRPermit/ID-A1[sireg2]",
+        "CSRPermit/ID-A2c[sireg3]",
+        "CSRPermit/ID-A2c[sireg4]",
+        "CSRPermit/ID-A2c[sireg5]",
+        "CSRPermit/ID-A2c[sireg6]"
+      ]
+    },
+    "norm:ssccfg_illegal_sireg_not_delegated": {
+      "rule_id": "norm:ssccfg_illegal_sireg_not_delegated",
+      "file": "priv/smcdeleg.adoc",
+      "line": 87,
+      "sha256": "f99b0c5cc0391861",
+      "text": "attempts to access `sireg*` when `siselect` = 0x41, or when the counter\nselected by `siselect` is not delegated to S-mode (the corresponding bit\nin `mcounteren` = 0).",
+      "properties": [
+        "CSRPermit/ID-A4a[sireg1]",
+        "CSRPermit/ID-A4a[sireg2]",
+        "CSRPermit/ID-A4b[sireg1]",
+        "CSRPermit/ID-A4b[sireg2]"
+      ]
+    },
+    "norm:sstateen_vsmode_access_roz": {
+      "rule_id": "norm:sstateen_vsmode_access_roz",
+      "file": "priv/smstateen.adoc",
+      "line": 144,
+      "sha256": "bbd64859e90d5b84",
+      "text": "For every bit in an `hstateen` CSR that is zero\n(whether read-only zero or set to zero), the same bit appears as read-only zero in\n`sstateen` when accessed in VS-mode.",
+      "properties": [
+        "CSRPermit/E3u[0]",
+        "CSRPermit/E3u[1]",
+        "CSRPermit/E3u[2]",
+        "CSRPermit/E3u[3]"
+      ]
+    },
+    "norm:sstatus_sdt_trap": {
+      "rule_id": "norm:sstatus_sdt_trap",
+      "file": "priv/supervisor.adoc",
+      "line": 273,
+      "sha256": "45bea1c7f7f30d72",
+      "text": "When a trap is to be taken into S-mode, if the `SDT` bit is currently 0,\nit is then set to 1, and the trap is delivered as expected. However, if `SDT` is\nalready set to 1, then this is an _unexpected trap_. In the event of an\n_unexpected trap_, a double-trap exception trap is delivered into M-mode. To\ndeliver this trap, the hart writes registers, except `mcause` and `mtval2`, with\nthe same information that the _unexpected trap_ would have written if it was\ntaken into M-mode. The `mtval2` register is then set to what would be otherwise\nwritten into the `mcause` register by the _unexpected trap_. The `mcause`\nregister is set to 16, the double-trap exception code.",
+      "properties": [
+        "TrapHandle/DT1",
+        "TrapHandle/DT5"
+      ]
+    },
+    "norm:trap_unexp_hndl_no_rnmi": {
+      "rule_id": "norm:trap_unexp_hndl_no_rnmi",
+      "file": "priv/machine.adoc",
+      "line": 499,
+      "sha256": "a2a96f724f2f8501",
+      "text": "When the ext:smrnmi[] extension is not implemented, or if the ext:smrnmi[] extension is\n  implemented and csr:mnstatus[nmie] is 0, the hart enters a critical-error state\n  without updating any architectural state, including the `pc`. This state\n  involves ceasing execution, disabling all interrupts (including NMIs), and\n  asserting a \"`critical-error`\" signal to the platform.",
+      "properties": [
+        "TrapHandle/DT4"
+      ]
+    },
+    "norm:trap_unexp_hndl_rnmi": {
+      "rule_id": "norm:trap_unexp_hndl_rnmi",
+      "file": "priv/machine.adoc",
+      "line": 483,
+      "sha256": "87a261719b7d56e8",
+      "text": "When the Smrnmi extension is implemented and csr:mnstatus[nmie] is 1, the hart\n  traps to the RNMI handler. To deliver this trap, the csr:mnepc[] and\n  csr:mncause[] registers are written with the values that the _unexpected trap_ would have\n  written to the csr:mepc[] and csr:mcause[] registers respectively. The privilege\n  mode information fields in the csr:mnstatus[] register are written to indicate\n  M-mode and its csr::[nmie] field is set to 0.",
+      "properties": [
+        "TrapHandle/DT3"
+      ]
+    },
+    "norm:vsstatus_sdt_op": {
+      "rule_id": "norm:vsstatus_sdt_op",
+      "file": "priv/hypervisor.adoc",
+      "line": 1241,
+      "sha256": "28483943cd8e75d4",
+      "text": "The Ssdbltrp adds an S-mode-disable-trap (`SDT`) field extension to address\ndouble trap (See <<supv-double-trap>>) in VS-mode.",
+      "properties": [
+        "TrapHandle/DT2",
+        "TrapHandle/DT6"
+      ]
+    }
+  },
+  "unresolved": []
+}

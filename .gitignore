@@ -1,0 +1,25 @@
+# 精化/SMT 缓存与报告（体积大，且绑定本机跑数）
+out/
+
+# 规范仓库下载缓存
+spec/cache/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 构建戳（如 out/_harness_classes/.ok）；out/ 已覆盖，再按文件名兜底
+*.ok
+**/.ok
+
+# 本机 XiangShan classpath，含绝对路径，对别人没用且暴露目录
+cp.txt
+
+# 编辑器 / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
