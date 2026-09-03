@@ -103,7 +103,8 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 # 辅助
 ./bin/csrformal list                 # 列出全部性质
 ./bin/csrformal rules --text         # 列出被引用的规则 id 及原文
-./bin/csrformal spike-cex out/reports/compliance.json   # 对反例问 Spike；缺二进制则跳过
+./bin/csrformal spike-cex out/reports/compliance.json   # 反例 + M 态阳性对照；缺二进制则跳过
+./bin/csrformal spike-cex --controls-only               # 只跑对照（M 读 0x24D / HS 读 0x14D）
 ```
 
 产物：
@@ -348,7 +349,8 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
    custom CSR 地址段。
 6. 配置相关：结论基于 `MinimalConfig`（`geilen=7`），`vgein` 相关性质依赖该参数。
 7. Spike 只做反例定性，不穷举。`check --spike` / `spike-cex` 未默认启用；
-   本机没有能跑的 spike 时跳过，见 `docs/spike-crosscheck.md`。
+   本机没有能跑的 spike 时跳过。`spike-cex` 会顺带跑 M 态读 `0x24D` 的阳性对照，
+   见 `docs/spike-crosscheck.md`。
 8. `spec-drift` 只检测被引用规则的文本变化，不检测「规范新增了一条我们没写性质的规则」。
 9. `CSRPermit/EQ-permit` 覆盖 Privilege、只读写、Sstc、counteren、TVM，
    以及 Smstateen 的 SE/ENVCFG/CONTEXT/IMSIC/CSRIND。未覆盖条款靠假设关掉。

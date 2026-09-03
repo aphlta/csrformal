@@ -171,7 +171,8 @@ def manual_steps(acc: CexAccess) -> str:
         f"  1. 用 riscv64-unknown-elf-gcc 编一段裸机：M 态写 menvcfg.STCE="
         f"{int(acc.menvcfg_stce)}，再 mret 进 {mode}，"
         f"{'csrw' if acc.wen else 'csrr'} 0x{acc.addr:03x}。\n"
-        f"  2. spike --isa=rv64gch_sstc <elf>，看 mcause：2=II，22=VI。\n"
+        f"  2. spike --isa=rv64gch_zicsr_zicntr_sstc <elf>，看 mcause：2=II，22=VI。\n"
+        f"     缺 zicntr 时合法读 (v)stimecmp 会把 spike SIGSEGV，不是 ISA 结论。\n"
         f"  3. 源码对照（不跑也能定性）：{src}\n"
         f"     stimecmp_csr_t::verify_permissions 第一项："
         f"menvcfg.STCE=0 且 prv<M → illegal_instruction。"
@@ -186,6 +187,16 @@ def manual_steps(acc: CexAccess) -> str:
 # tohost 必须带 fromhost，否则 fesvr 直接放弃 HTIF，裸机死循环。
 # fesvr 把 tohost 低 48 位的奇数当退出码（payload>>1）；写成偶数会被当成
 # syscall 参数块地址。所以把 mcause 编成 (mcause<<1)|1，进程退出码才是 mcause。
+#
+# --isa 必须带 zicntr：stimecmp_csr_t::verify_permissions 在 STCE 检查通过后
+# 会解引用 time_proxy。不含 zicntr 时 Spike 不建 time CSR，合法读 (v)stimecmp
+# 把 host spike SIGSEGV。非法路径先抛 II，碰不到这行，所以只测失败路径会漏掉。
+_SPIKE_ISAS = (
+    "rv64gch_zicsr_zicntr_sstc",
+    "rv64gch_zicntr_sstc",
+    "rv64gch_zicsr_sstc",
+)
+
 _ASM_TEMPLATE = r"""
 # 最小裸机：M 态设 menvcfg.STCE，再 mret 到目标特权，访问指定 CSR。
     .option norvc
@@ -204,7 +215,7 @@ _start:
     mret
 
 _guest:
-    {csr_insn} t0, {addr}
+    {csr_line}
     li   t0, 0
     j    _exit
 
@@ -248,17 +259,49 @@ def _mcause_to_verdict(cause: int) -> str:
     return f"mcause={cause}"
 
 
+def case_workdir(pid: str) -> str:
+    """每条用例单独目录，避免阳性对照把 S3 的 cex.S / run.log 盖掉。"""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", pid).strip("_") or "case"
+    return os.path.join(config.OUT_DIR, "spike-cex", safe)
+
+
+def control_cases() -> List[CexAccess]:
+    """与失败路径同一套 cex.S 模板 / 同一 --isa= 的固定对照。
+
+    合法对照走 M 态读 vstimecmp：STCE 任意（这里用 0 证明是特权不是 STCE）。
+    HS+STCE=1 还要再开 mcounteren.TM，否则 time_proxy 仍抛 II，不拿来当阳性。
+    """
+    return [
+        CexAccess(pid="ctrl/legal-M-vstimecmp", addr=0x24D, prvm=3, v=False,
+                  wen=False, ren=True, menvcfg_stce=False,
+                  rtl="", spec="NONE"),
+        CexAccess(pid="ctrl/illegal-HS-stimecmp", addr=0x14D, prvm=1, v=False,
+                  wen=False, ren=True, menvcfg_stce=False,
+                  rtl="II", spec="II"),
+    ]
+
+
+def _is_host_crash(rc: int) -> bool:
+    """subprocess 把 SIGSEGV 记成负数；那是 harness/ISA 串问题，不是 mcause。"""
+    return rc < 0
+
+
 def _run_baremetal(acc: CexAccess, spike: str, gcc: str) -> SpikeVote:
     """编一小段裸机，子进程跑 spike。失败就跳过，不装作成绩。"""
     mpp = 3 if acc.prvm == 3 else (1 if acc.prvm == 1 else 0)
     mpv = 1 if acc.v else 0
     mstatus = (mpp << 11) | (mpv << 39)
     menv = 0 if not acc.menvcfg_stce else (1 << 63)
-    csr_insn = "csrw" if acc.wen else "csrr"
+    # csrr rd, csr / csrw csr, rs1 操作数顺序相反；写成 csrw t0, 0x24d
+    # 会被汇编器当成「未知 CSR t0」。
+    if acc.wen:
+        csr_line = f"csrw {hex(acc.addr)}, t0"
+    else:
+        csr_line = f"csrr t0, {hex(acc.addr)}"
     asm = _ASM_TEMPLATE.format(
         menv=hex(menv), mpp=mpp, mpv=mpv, mstatus=hex(mstatus),
-        csr_insn=csr_insn, addr=hex(acc.addr))
-    work = os.path.join(config.OUT_DIR, "spike-cex")
+        csr_line=csr_line)
+    work = case_workdir(acc.pid)
     os.makedirs(work, exist_ok=True)
     sfile = os.path.join(work, "cex.S")
     elf = os.path.join(work, "cex.elf")
@@ -289,32 +332,42 @@ def _run_baremetal(acc: CexAccess, spike: str, gcc: str) -> SpikeVote:
         return SpikeVote(acc.pid, acc, None,
                          skipped=f"交叉编译失败：{compile_err}",
                          reading=classify(acc.rtl, acc.spec, None))
-    # zicsr 在部分 spike 是隐含的；认不出就去掉再试一次。
+    # 先试带 zicntr 的串。旧串合法读会 SIGSEGV，当成「这串不能用」再试下一个。
     r = None
     run_err = ""
-    for isa in ("rv64gch_zicsr_sstc", "rv64gch_sstc"):
+    for isa in _SPIKE_ISAS:
         try:
             r = subprocess.run(
                 [spike, f"--isa={isa}", elf],
                 capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.TimeoutExpired) as e:
             run_err = str(e)
+            r = None
             continue
         log = (r.stdout or "") + (r.stderr or "")
         if "unsupported" in log.lower() or "invalid isa" in log.lower():
             run_err = log.strip()[:200]
+            r = None
+            continue
+        if _is_host_crash(r.returncode):
+            run_err = (f"spike 段错误 returncode={r.returncode} isa={isa}；"
+                       f"缺 zicntr 时合法读 (v)stimecmp 会空指针")
+            r = None
             continue
         break
+    log_path = os.path.join(work, "run.log")
     if r is None:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"# spike 未能得到 ISA 结论\n# {run_err}\n")
         return SpikeVote(acc.pid, acc, None,
                          skipped=f"spike 子进程失败：{run_err}",
                          reading=classify(acc.rtl, acc.spec, None))
-    log_path = os.path.join(work, "run.log")
     with open(log_path, "w", encoding="utf-8") as f:
         f.write(f"# spike {' '.join(r.args)}\n# returncode={r.returncode}\n")
         f.write(r.stdout or "")
         f.write(r.stderr or "")
     # fesvr 退出码是 mcause；失败时还会印 "*** FAILED *** (tohost = N)"。
+    # 成功路径写 tohost=1 → 进程退出 0，不要把空 stderr 当成没跑。
     cause = r.returncode
     m = re.search(r"tohost\s*=\s*(0x[0-9a-fA-F]+|\d+)",
                   (r.stdout or "") + (r.stderr or ""))
@@ -345,6 +398,31 @@ def query_spike(acc: CexAccess) -> SpikeVote:
                          reading=classify(acc.rtl, acc.spec, None))
 
 
+def _control_reading(v: SpikeVote) -> str:
+    """对照不是 RTL 投票，避免 classify 写成「三方一致」。"""
+    if v.skipped:
+        return v.reading
+    if v.access.pid.startswith("ctrl/legal"):
+        if v.spike == "NONE":
+            return "阳性对照通过：M 态读 vstimecmp，Spike 未抛 II（tohost 成功退出 0）"
+        return f"阳性对照失败：期望 NONE，得到 {v.spike}"
+    if v.access.pid.startswith("ctrl/illegal"):
+        if v.spike == "II":
+            return "非法对照通过：HS+STCE=0 读 stimecmp，Spike=II"
+        return f"非法对照失败：期望 II，得到 {v.spike}"
+    return v.reading
+
+
+def votes_controls() -> List[SpikeVote]:
+    """同一套裸机脚本上的固定对照，不依赖 compliance.json 里有没有反例。"""
+    out = []
+    for acc in control_cases():
+        v = query_spike(acc)
+        v.reading = _control_reading(v)
+        out.append(v)
+    return out
+
+
 def votes_from_report(doc: dict) -> List[SpikeVote]:
     out = []
     for p in doc.get("properties", []):
@@ -372,9 +450,9 @@ def votes_from_report(doc: dict) -> List[SpikeVote]:
     return out
 
 
-def print_votes(votes: List[SpikeVote]) -> None:
+def print_votes(votes: List[SpikeVote], *, empty_msg: str = "没有可解析的 VIOLATED 反例。") -> None:
     if not votes:
-        print("没有可解析的 VIOLATED 反例。")
+        print(empty_msg)
         return
     for v in votes:
         a = v.access
@@ -387,3 +465,10 @@ def print_votes(votes: List[SpikeVote]) -> None:
         print("    手工步骤：")
         for ln in manual_steps(a).splitlines():
             print("    " + ln)
+
+
+def print_all_votes(cex_votes: List[SpikeVote], ctrl_votes: List[SpikeVote]) -> None:
+    print("---- Spike 反例定性（不穷举；缺 spike 则跳过）----")
+    print_votes(cex_votes)
+    print("---- Spike 阳性对照（同一套裸机 / 同一 --isa=；合法走 M 态）----")
+    print_votes(ctrl_votes, empty_msg="没有对照用例。")

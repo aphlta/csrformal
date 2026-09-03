@@ -9,7 +9,7 @@
   csrformal self-test            变异回归：注入已知缺陷，确认对应性质能杀死它
   csrformal spec-selfcheck       规格自洽：permit / trap_entry 的 Python 与 SMT 必须一致
   csrformal spike                打印 Spike 交叉检查说明
-  csrformal spike-cex            对已有报告里的反例问 Spike（缺二进制则跳过）
+  csrformal spike-cex            对已有报告里的反例问 Spike，并跑 M 态阳性对照
 """
 import argparse
 import json
@@ -176,14 +176,16 @@ def cmd_check(args):
                 print(f"       [out] {k} = {v}")
     if getattr(args, "spike", False):
         from . import spike_oracle
-        print("\n---- Spike 反例定性（不穷举；缺 spike 则跳过）----")
+        print()
         doc = {
             "properties": [{
                 "pid": r.prop.pid, "status": r.status, "prove": r.prop.prove,
                 "counterexample": r.counterexample, "outputs": r.outputs,
             } for r in all_results if r.status == runner.VIOLATED]
         }
-        spike_oracle.print_votes(spike_oracle.votes_from_report(doc))
+        spike_oracle.print_all_votes(
+            spike_oracle.votes_from_report(doc),
+            spike_oracle.votes_controls())
     return 1 if check_failed(s) else 0
 
 
@@ -426,15 +428,21 @@ def cmd_spike(args):
 
 def cmd_spike_cex(args):
     from . import spike_oracle
-    path = args.report
-    if not os.path.exists(path):
-        raise SystemExit(f"报告不存在: {path}")
-    with open(path, encoding="utf-8") as f:
-        doc = json.load(f)
-    votes = spike_oracle.votes_from_report(doc)
-    spike_oracle.print_votes(votes)
+    cex_votes = []
+    if not args.controls_only:
+        path = args.report
+        if not path:
+            raise SystemExit("spike-cex 需要报告路径，或加 --controls-only 只跑对照")
+        if not os.path.exists(path):
+            raise SystemExit(f"报告不存在: {path}")
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        cex_votes = spike_oracle.votes_from_report(doc)
+    ctrl_votes = spike_oracle.votes_controls()
+    spike_oracle.print_all_votes(cex_votes, ctrl_votes)
     # 缺 spike 是跳过，不是失败。真跑了且需要当门禁时看 --strict。
-    if args.strict and any(v.spike is None for v in votes):
+    all_votes = cex_votes + ctrl_votes
+    if args.strict and any(v.spike is None for v in all_votes):
         return 1
     return 0
 
@@ -498,7 +506,9 @@ def main(argv=None):
     p.set_defaults(fn=cmd_spike)
 
     p = sub.add_parser("spike-cex", help="对报告里的反例问 Spike（缺则跳过）")
-    p.add_argument("report", help="compliance.json 路径")
+    p.add_argument("report", nargs="?", help="compliance.json 路径")
+    p.add_argument("--controls-only", action="store_true",
+                   help="只跑 M 态阳性对照和 HS+stimecmp 非法对照，不读报告")
     p.add_argument("--strict", action="store_true",
                    help="缺 spike 也当失败（默认跳过，退出码 0）")
     p.set_defaults(fn=cmd_spike_cex)
