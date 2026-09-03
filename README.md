@@ -29,9 +29,9 @@ SMT 在假设允许的自由位上穷尽，不是在全输入空间上证明整�
 
 ## 安装
 
-**仅 Linux。** 不支持 Windows（SMT2 缓存用 `fcntl` 文件锁）。请在 Linux
-主机或 Docker 里跑；启动时若没有 `fcntl` 会直接报「需要 Linux」，
-本仓库不为 Windows 重写流水线。
+**精化 / `check` / 变异回归仅 Linux。** SMT2 缓存用 `fcntl` 文件锁，不支持
+Windows。`list` / `lint` / `spec-selfcheck` 是纯逻辑，不拦。请在 Linux
+主机或 Docker 里跑精化；本仓库不为 Windows 重写流水线。
 
 ### 外部工具（不由本仓库安装）
 
@@ -113,7 +113,7 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 - `out/<tag>/<rtl_id>/m.sv`、`c.smt2` —— 中间产物；`<rtl_id>` 是树路径 / commit / 关键 `.scala` 的指纹。换 `CSRFORMAL_XS_TREE` 或 commit 会自动换目录，不靠 `--rebuild`。
 
 退出码：反例 / 真空 / 未知 / 错误 → 1；全部 HOLDS 为 0。
-`--review` 若匹配到 0 条性质，拒绝当作通过（退出 1）。
+`--review` / `--only` 若匹配到 0 条性质（或变异体），拒绝当作通过（退出 1）。
 
 ### 登记规模（`XiangShan-b90dbba` @ `b90dbba4`）
 
@@ -127,7 +127,8 @@ export CSRFORMAL_CHISEL_PLUGIN=/path/to/chisel-plugin_2.13-*.jar
 - 当前红的是 `CSRPermit/S3` 与 `CSRPermit/EQ-permit`，反例都是
   `vstimecmp` + `menvcfg.STCE=0` 一类。EQ 绿只表示「已建模条款 + 假设关掉的路径」
   下 RTL 与规格一致，不等于符合整本规范。
-- 精化缓存键含 RTL 树身份。不要无故 `--rebuild`。
+- 精化缓存键含 RTL 树身份和 `src/eqcheck/Elab2.scala`。不要无故 `--rebuild`。
+  `--rebuild` 会连 harness class 一起重编。
 
 ## 规范漂移 demo
 
@@ -175,8 +176,9 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 ./bin/csrformal self-test --report out/reports/self-test.md
 ```
 
-12 个变体。前 10 个约 77 s、行为符合预期；`te1`/`te2` 独立验证
-（每个变体要单独 scalac 覆盖编译 + 重新精化）：
+13 个变体。前 10 个约 77 s、行为符合预期；`te1`/`te2`/`tehs1` 独立验证
+（每个变体要单独 scalac 覆盖编译 + 重新精化）。`tehs1` 只改 HS 路径，
+没有它则 TrapEntryHS 三条 EQ 全绿不可信：
 
 | 变体 | 类型 | 内容 | 结果 |
 |---|---|---|---|
@@ -192,6 +194,7 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 | `pc3` | defect | 回滚 `74fd4f59`：VS 向量化入口 PC 用未映射的中断号 | KILLED by `V3` ×3 |
 | `te1` | defect | LS-GPF 的 `mtval2` 误用 `trapPCGPA` 而非 `trapMemGPA` | KILLED by `TrapEntryM/EQ-tval` |
 | `te2` | defect | 精确 tval 翻了 PC 与 memVA：mem 异常误写 `trapPC` | KILLED by `TrapEntryM/EQ-tval-data` |
+| `tehs1` | defect | HS：LS-GPF 的 `htval` 误用 `trapPCGPA` 而非 `trapMemGPA` | KILLED by `TrapEntryHS/EQ-tval` |
 
 `pc1` 上一轮的类型是 defect（历史 bug 重放的阳性对照），依据是当时被误删了 “or vstimecmp”
 的规范文本。规范恢复后该实现变成正确实现，因此改判为 fix 对照，职责是断言 F1 的建议改法

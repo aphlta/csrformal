@@ -85,12 +85,18 @@ def key_scala_paths(module: str) -> List[str]:
     return [os.path.join(config.XS_TREE, rel)]
 
 
+def harness_scala_path() -> str:
+    """csrformal 自带的精化 harness。改它必须让 class / SV 缓存一起失效。"""
+    return os.path.join(config.HARNESS_SRC, "eqcheck", "Elab2.scala")
+
+
 def rtl_identity(module: str, overrides: Optional[List[str]] = None,
                  source_files: Optional[List[str]] = None) -> str:
-    """RTL 树身份：路径、XS_COMMIT、git HEAD、关键/覆盖源文件。
+    """RTL 树身份：路径、XS_COMMIT、git HEAD、关键/覆盖源文件、Elab2。
 
     只按模块名缓存会在换 CSRFORMAL_XS_TREE / 换 commit / 换变异体源时
-    静默复用旧 SV。12 位 hex 够分目录，也方便对照报告。
+    静默复用旧 SV。harness 旧逻辑只哈希香山树，改 Elab2.scala 会静默
+    复用旧 class（e0305f2 同类）。12 位 hex 够分目录，也方便对照报告。
     """
     h = hashlib.sha256()
     tree = os.path.realpath(config.XS_TREE) if config.XS_TREE else ""
@@ -100,6 +106,9 @@ def rtl_identity(module: str, overrides: Optional[List[str]] = None,
     h.update(b"\0module:" + module.encode())
     files = list(source_files or [])
     files.extend(key_scala_paths(module))
+    # Elab2 是精化 top。rtl_identity("harness") 与各模块 SV 缓存都必须带上，
+    # 否则 git pull 更新 harness 后同 XS 树会复用旧 class / 旧网表。
+    files.append(harness_scala_path())
     if overrides:
         files.extend(overrides)
     for p in sorted(set(files)):
@@ -152,7 +161,7 @@ def build_harness_classes(force: bool = False) -> str:
         return dest
     os.makedirs(dest, exist_ok=True)
     cp = config.classpath()
-    src = os.path.join(config.HARNESS_SRC, "eqcheck", "Elab2.scala")
+    src = harness_scala_path()
     r = _run([config.JAVA, "-Xmx8g", "-cp", cp, "scala.tools.nsc.Main",
               f"-Xplugin:{config.CHISEL_PLUGIN}", "-language:reflectiveCalls",
               "-Ymacro-annotations", "-Ytasty-reader", "-classpath", cp,
@@ -184,7 +193,8 @@ def elaborate(module: str, tag: str, overrides: Optional[List[str]] = None,
     sv = os.path.join(d, "m.sv")
     os.makedirs(d, exist_ok=True)
 
-    harness = build_harness_classes()
+    # --rebuild 必须连 harness 一起重编；force 以前是死参数。
+    harness = build_harness_classes(force=force)
     cp = config.classpath()
     cp_parts = [harness, cp]
 

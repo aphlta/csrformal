@@ -16,8 +16,8 @@
 asciidoc 里的两种锚点
 --------------------
 1) 行内锚点  ``[#norm:xxx]#规则正文…#``   —— 正文在紧跟的一对 ``#`` 之间，
-   可以跨行。闭合是「未转义且后面不是单词字符」的 ``#``；正文里的
-   ``#0x14D`` 必须保留，不能用第一个 ``find("#")`` 静默截断（否则 drift 漏报）。
+   可以跨行。闭合不能用第一个 ``find("#")``：正文里的 ``#0x14D``、
+   ``#(see table)``、句中 ``# 3`` 必须保留，否则 drift 漏报。
    含 ``#`` 却找不到合法闭合时直接失败。
 2) 块锚点    ``[[norm:xxx]]`` 独占一行 —— 规则正文是紧随其后的整个段落
    （到下一个空行 / 下一个锚点 / 下一个块指令为止）。
@@ -47,7 +47,11 @@ def _inline_close(src: str, start: int):
     不能用第一个 `src.find("#")`：规则正文里的 `#0x14D` / `privilege #3`
     会被静默截断，drift 比对只看到半句，后半段改了也漏报。
 
-    闭合条件：未转义的 `#`，且后面不是单词字符（那是正文里的字面 #）。
+    `#(` / 句中 `# ` 后面也不是单词字符，旧逻辑仍会当成闭合。
+    `#(see table)`、`privilege # 3` 必须留在正文里；找不到合法闭合
+    时拒绝静默截断。
+
+    闭合：未转义的 `#`，且不是正文里的字面 #。
     返回 (closer_index, saw_interior_hash)。找不到闭合时 closer 为 -1。
     """
     i = start
@@ -58,7 +62,15 @@ def _inline_close(src: str, start: int):
             continue
         if src[i] == "#":
             nxt = src[i + 1] if i + 1 < len(src) else ""
-            if nxt.isalnum() or nxt == "_":
+            prev = src[i - 1] if i > 0 else ""
+            # 正文里的字面 #：#0x14D / privilege #3 / #(see table)
+            if nxt.isalnum() or nxt == "_" or nxt == "(":
+                saw_interior = True
+                i += 1
+                continue
+            # `privilege # 3`：# 前后都是空白。规范里真正的闭合是
+            # `register# reporting`（# 紧贴前一个非空白）。
+            if nxt in (" ", "\t") and prev in (" ", "\t"):
                 saw_interior = True
                 i += 1
                 continue

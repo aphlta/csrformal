@@ -68,5 +68,16 @@ class TestEmptyReview(unittest.TestCase):
             self.assertEqual(rc, 1)
 
 
+class TestEmptyOnly(unittest.TestCase):
+    def test_only_typo_exits_nonzero(self):
+        # 拼错 / 匹配 0 条必须在精化之前以非 0 退出，不能当成功。
+        rc = main(["check", "CSRPermitModule", "--only", "NoSuchPidTyPoXYZ"])
+        self.assertEqual(rc, 1)
+
+    def test_selftest_only_typo_exits_nonzero(self):
+        rc = main(["self-test", "--only", "no_such_mutant_xyz"])
+        self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

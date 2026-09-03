@@ -128,6 +128,13 @@ def _build() -> Dict[str, ModuleSpec]:
         props=trap_entry.PROPS_HS,
         sources={"TrapEntryHSEventModule": os.path.join(events, "TrapEntryHSEvent.scala")},
         doc="陷入 HS 后各 CSR 次态（EQ-next：SIE 族；EQ-tval：tval2/GVA；EQ-tval-data：精确 stval）",
+        mutants=[
+            # 只改 HS 路径。没有这条的话，TrapEntryHS 三条 EQ 全绿不可信
+            # （README：没有阳性对照则全部通过不可信）。
+            Mutant("tehs1", "TrapEntryHSEventModule",
+                   "HS：LS guest-page-fault 的 tval2 误用 trapPcGPA 而非 memGPA",
+                   _mut("tehs1_TrapEntryHSEvent.scala"), ["EQ-tval"]),
+        ],
     )
     return specs
 

@@ -37,6 +37,26 @@ class TestInlineHash(unittest.TestCase):
             extract_rules_from_text(src, "t.adoc")
         self.assertIn("拒绝截断", str(ctx.exception))
 
+    def test_hash_paren_in_body_is_kept(self):
+        # `#(` 后面不是单词字符，旧逻辑会在这里静默截断。
+        src = "[#norm:hash_paren]#Access CSR #(see table) when STCE=0.#\n"
+        rules = extract_rules_from_text(src, "t.adoc")
+        self.assertEqual(rules["norm:hash_paren"].text,
+                         "Access CSR #(see table) when STCE=0.")
+
+    def test_hash_space_in_body_is_kept(self):
+        # `#` 前后都是空白（`privilege # 3`）是正文；规范闭合是 `word# `.
+        src = "[#norm:hash_space]#See privilege # 3 for details.#\n"
+        rules = extract_rules_from_text(src, "t.adoc")
+        self.assertEqual(rules["norm:hash_space"].text,
+                         "See privilege # 3 for details.")
+
+    def test_unclosed_hash_paren_fails(self):
+        src = "[#norm:bad_paren]#Access CSR #(see table) with no closer\n"
+        with self.assertRaises(ValueError) as ctx:
+            extract_rules_from_text(src, "t.adoc")
+        self.assertIn("拒绝截断", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

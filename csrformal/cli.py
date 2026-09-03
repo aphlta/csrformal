@@ -41,10 +41,9 @@ def _select(props, only, pids=None):
         return [p for p in props if p.pid in want]
     if not only:
         return props
-    sel = [p for p in props if only.lower() in p.pid.lower()]
-    if not sel:
-        raise SystemExit(f"--only {only!r} 没有匹配到任何性质；用 `csrformal list` 查看")
-    return sel
+    # 单个模块 0 命中不在这里退出：`check all --only S3` 时其它模块本来就
+    # 不该匹配。拼错 / 全局 0 条由调用方按空 --review 同一原则拒绝。
+    return [p for p in props if only.lower() in p.pid.lower()]
 
 
 def check_failed(summary: dict) -> bool:
@@ -69,7 +68,11 @@ def selftest_ok(kind: str, statuses) -> bool:
 
 
 def _require_linux():
-    """本工具只用 Linux 上的 fcntl 文件锁；不是 Windows 移植。"""
+    """精化 / SMT2 缓存需要 Linux 上的 fcntl 文件锁；不是 Windows 移植。
+
+    只在即将精化或写 SMT 缓存时调用。list / lint / spec-selfcheck
+    以及 check --review/--only 空匹配不得走这里。
+    """
     try:
         import fcntl  # noqa: F401
     except ImportError:
@@ -93,10 +96,16 @@ def cmd_check(args):
     for name in names:
         spec = modules.get(name)
         selected.append((name, _select(spec.props, args.only, pids)))
-    # --review 空匹配必须失败：0 条性质跑完 summarize 全 0，会静默当通过。
-    if args.review is not None and sum(len(p) for _, p in selected) == 0:
+    # --review / --only 空匹配必须失败：0 条性质跑完 summarize 全 0，会静默当通过。
+    nsel = sum(len(p) for _, p in selected)
+    if args.review is not None and nsel == 0:
         print(f"--review {args.review}: 0 条性质，拒绝当作通过")
         return 1
+    if args.only is not None and nsel == 0:
+        print(f"--only {args.only!r}: 0 条性质，拒绝当作通过；用 `csrformal list` 查看")
+        return 1
+    # 过了 0 匹配门禁才需要 fcntl / 精化。空 --review/--only 的 unittest 不该被拦。
+    _require_linux()
     wall0 = time.time()
     all_results, meta_mods = [], []
     for name, props in selected:
@@ -306,46 +315,51 @@ def cmd_self_test(args):
     """
     total = killed = 0
     rows = []
+    jobs = []
     for name in sorted(modules.all_modules()):
         spec = modules.get(name)
         if args.module and args.module != name:
             continue
         muts = [m for m in spec.mutants if not args.only or args.only in m.mid]
-        if not muts:
-            continue
-        base_props = spec.props
         for m in muts:
-            total += 1
-            print(f"\n=== 变异体 {m.mid} [{name}] {m.desc} ===", flush=True)
-            src = dict(spec.sources)
-            src[m.module] = m.patch
-            sv = elaborate.elaborate(name, f"mut_{m.mid}",
-                                     overrides=list(src.values()), force=args.rebuild)
-            r = runner.ModuleRunner(sv, name, _smt2_beside(sv))
-            # 只跑「预期能杀死它的」那批性质：跑全套没有额外信息，只是慢
-            keys = m.expect_fix if m.kind == "fix" else m.expect_kill
-            want = [p for p in base_props
-                    if any(p.pid.split("/", 1)[1].startswith(k) for k in keys)]
-            if not want:
-                raise SystemExit(f"变体 {m.mid} 的 expect_{m.kind}={keys} 没匹配到性质")
-            res = r.run(want, progress=False)
-            fails = [x for x in res if x.status == runner.VIOLATED]
-            vac = [x for x in res if x.status == runner.VACUOUS]
-            unk = [x for x in res if x.status == runner.UNKNOWN]
-            err = [x for x in res if x.status == runner.ERROR]
-            # 修复对照 / 阳性对照都只认明确 HOLDS/VIOLATED；
-            # UNKNOWN 既不能当 FIXED，也不能当 KILLED。
-            ok = selftest_ok(m.kind, [x.status for x in res])
-            if m.kind == "fix":
-                verdict = "FIXED ✔" if ok else "NOT FIXED ✘"
-            else:
-                verdict = "KILLED ✔" if ok else "SURVIVED ✘"
-            killed += ok
-            print(f"  相关性质 {len(want)} 条 → 反例 {len(fails)} 条，真空 {len(vac)} 条"
-                  f"，未知 {len(unk)} 条，错误 {len(err)} 条  ⇒ {verdict}")
-            for x in (fails[:3] if m.kind == "defect" else res[:3]):
-                print(f"     - [{x.status}] {x.prop.pid}: {x.prop.title}")
-            rows.append((m.mid, name, m.kind, m.desc, len(want), len(fails), ok))
+            jobs.append((name, spec, m))
+    # --only 拼错 / 匹配 0 条不得当成功。和空 --review 同一原则。
+    if args.only is not None and not jobs:
+        print(f"--only {args.only!r}: 0 个变异体，拒绝当作通过")
+        return 1
+    _require_linux()
+    for name, spec, m in jobs:
+        total += 1
+        print(f"\n=== 变异体 {m.mid} [{name}] {m.desc} ===", flush=True)
+        src = dict(spec.sources)
+        src[m.module] = m.patch
+        sv = elaborate.elaborate(name, f"mut_{m.mid}",
+                                 overrides=list(src.values()), force=args.rebuild)
+        r = runner.ModuleRunner(sv, name, _smt2_beside(sv))
+        # 只跑「预期能杀死它的」那批性质：跑全套没有额外信息，只是慢
+        keys = m.expect_fix if m.kind == "fix" else m.expect_kill
+        want = [p for p in spec.props
+                if any(p.pid.split("/", 1)[1].startswith(k) for k in keys)]
+        if not want:
+            raise SystemExit(f"变体 {m.mid} 的 expect_{m.kind}={keys} 没匹配到性质")
+        res = r.run(want, progress=False)
+        fails = [x for x in res if x.status == runner.VIOLATED]
+        vac = [x for x in res if x.status == runner.VACUOUS]
+        unk = [x for x in res if x.status == runner.UNKNOWN]
+        err = [x for x in res if x.status == runner.ERROR]
+        # 修复对照 / 阳性对照都只认明确 HOLDS/VIOLATED；
+        # UNKNOWN 既不能当 FIXED，也不能当 KILLED。
+        ok = selftest_ok(m.kind, [x.status for x in res])
+        if m.kind == "fix":
+            verdict = "FIXED ✔" if ok else "NOT FIXED ✘"
+        else:
+            verdict = "KILLED ✔" if ok else "SURVIVED ✘"
+        killed += ok
+        print(f"  相关性质 {len(want)} 条 → 反例 {len(fails)} 条，真空 {len(vac)} 条"
+              f"，未知 {len(unk)} 条，错误 {len(err)} 条  ⇒ {verdict}")
+        for x in (fails[:3] if m.kind == "defect" else res[:3]):
+            print(f"     - [{x.status}] {x.prop.pid}: {x.prop.title}")
+        rows.append((m.mid, name, m.kind, m.desc, len(want), len(fails), ok))
 
     print(f"\n==== 变异回归：{killed}/{total} 符合预期 ====")
     print(f"{'变异体':8s} {'类型':7s} {'模块':20s} {'性质':>5s} {'反例':>5s}  结果")
@@ -464,8 +478,13 @@ def main(argv=None):
     p.set_defaults(fn=cmd_spike_cex)
 
     args = ap.parse_args(argv)
-    _require_linux()
-    os.makedirs(config.OUT_DIR, exist_ok=True)
+    # list / lint / rules / spec-selfcheck / spike 是纯逻辑：不碰 fcntl、
+    # 不精化、不写 SMT 缓存。CI 与 unittest 必须能跑。
+    # check / self-test 的 _require_linux 放在各自 0 匹配门禁之后，
+    # 否则空 --review / 拼错 --only 的两则单测会被误伤。
+    _PURE = {"list", "rules", "lint", "spike", "spec-selfcheck"}
+    if args.cmd not in _PURE:
+        os.makedirs(config.OUT_DIR, exist_ok=True)
     return args.fn(args)
 
 
