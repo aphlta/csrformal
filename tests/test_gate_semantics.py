@@ -12,7 +12,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from csrformal import runner
-from csrformal.cli import check_failed, main, selftest_ok
+from csrformal.cli import (
+    check_failed, expect_key_matches, main, select_expect_props, selftest_ok,
+)
+from csrformal.props import Property, SpecRef
 
 
 class TestCheckExit(unittest.TestCase):
@@ -32,6 +35,44 @@ class TestCheckExit(unittest.TestCase):
                  runner.UNKNOWN: 0, runner.ERROR: 0}
             s[key] = 1
             self.assertTrue(check_failed(s), key)
+
+
+def _prop(pid):
+    return Property(pid=pid, title=pid, module="T", assumes=[], prove="true",
+                    ref=SpecRef("norm:x", "t.adoc"))
+
+
+class TestExpectKeyMatch(unittest.TestCase):
+    """EQ-tval 不得 startswith 误伤 EQ-tval-data；族名仍吃 D2[...]。"""
+
+    def test_eq_tval_does_not_eat_eq_tval_data(self):
+        self.assertTrue(expect_key_matches("TrapEntryM/EQ-tval", "EQ-tval"))
+        self.assertFalse(expect_key_matches("TrapEntryM/EQ-tval-data", "EQ-tval"))
+        self.assertTrue(expect_key_matches("TrapEntryM/EQ-tval-data", "EQ-tval-data"))
+        self.assertFalse(expect_key_matches("TrapEntryM/EQ-tval", "EQ-tval-data"))
+
+    def test_eq_permit_is_exact(self):
+        self.assertTrue(expect_key_matches("CSRPermit/EQ-permit", "EQ-permit"))
+        self.assertFalse(expect_key_matches("CSRPermit/EQ-permit", "EQ"))
+        self.assertFalse(expect_key_matches("TrapEntryM/EQ-tval", "EQ"))
+
+    def test_family_bracket_still_matches(self):
+        self.assertTrue(expect_key_matches("TrapHandle/D2[e=8,HS]", "D2"))
+        self.assertTrue(expect_key_matches("CSRPermit/C2[cycle]", "C2"))
+        self.assertTrue(expect_key_matches("CSRPermit/E3[0]", "E3"))
+        self.assertFalse(expect_key_matches("CSRPermit/E3u[0]", "E3"))
+        self.assertFalse(expect_key_matches("CSRPermit/S3b", "S3"))
+
+    def test_te1_te2_select_disjoint(self):
+        props = [
+            _prop("TrapEntryM/EQ-next"),
+            _prop("TrapEntryM/EQ-tval"),
+            _prop("TrapEntryM/EQ-tval-data"),
+        ]
+        te1 = [p.pid for p in select_expect_props(props, ["EQ-tval"])]
+        te2 = [p.pid for p in select_expect_props(props, ["EQ-tval-data"])]
+        self.assertEqual(te1, ["TrapEntryM/EQ-tval"])
+        self.assertEqual(te2, ["TrapEntryM/EQ-tval-data"])
 
 
 class TestSelftestVerdict(unittest.TestCase):

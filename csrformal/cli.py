@@ -51,6 +51,30 @@ def check_failed(summary: dict) -> bool:
     return any(summary.get(s) for s in CHECK_FAIL)
 
 
+def pid_suffix(pid: str) -> str:
+    """`Module/local` → `local`。无斜杠时原样返回，方便单测喂裸后缀。"""
+    return pid.split("/", 1)[1] if "/" in pid else pid
+
+
+def expect_key_matches(pid: str, key: str) -> bool:
+    """expect_kill / expect_fix 是否选中这条性质。
+
+    精确：`TrapEntryM/EQ-tval` 对 key `EQ-tval`。
+    族：`TrapHandle/D2[e=8,HS]` 对 key `D2`（后缀以 `D2[` 开头）。
+
+    不用 `startswith(key)`：否则 `EQ-tval` 会吃到 `EQ-tval-data`，
+    te1 与 te2 的对照会串台；`S3` 也会误伤 `S3b`。
+    """
+    suffix = pid_suffix(pid)
+    return suffix == key or suffix.startswith(key + "[")
+
+
+def select_expect_props(props, keys):
+    """按 expect_kill/fix 的 key 选出应对的性质。"""
+    return [p for p in props
+            if any(expect_key_matches(p.pid, k) for k in keys)]
+
+
 def selftest_ok(kind: str, statuses) -> bool:
     """变异对照是否符合预期。
 
@@ -316,6 +340,7 @@ def cmd_self_test(args):
     total = killed = 0
     rows = []
     jobs = []
+    wall0 = time.time()
     for name in sorted(modules.all_modules()):
         spec = modules.get(name)
         if args.module and args.module != name:
@@ -338,8 +363,7 @@ def cmd_self_test(args):
         r = runner.ModuleRunner(sv, name, _smt2_beside(sv))
         # 只跑「预期能杀死它的」那批性质：跑全套没有额外信息，只是慢
         keys = m.expect_fix if m.kind == "fix" else m.expect_kill
-        want = [p for p in spec.props
-                if any(p.pid.split("/", 1)[1].startswith(k) for k in keys)]
+        want = select_expect_props(spec.props, keys)
         if not want:
             raise SystemExit(f"变体 {m.mid} 的 expect_{m.kind}={keys} 没匹配到性质")
         res = r.run(want, progress=False)
@@ -361,7 +385,9 @@ def cmd_self_test(args):
             print(f"     - [{x.status}] {x.prop.pid}: {x.prop.title}")
         rows.append((m.mid, name, m.kind, m.desc, len(want), len(fails), ok))
 
+    wall = time.time() - wall0
     print(f"\n==== 变异回归：{killed}/{total} 符合预期 ====")
+    print(f"壁钟 {wall:.1f}s")
     print(f"{'变异体':8s} {'类型':7s} {'模块':20s} {'性质':>5s} {'反例':>5s}  结果")
     for mid, name, kind, desc, nw, nf, ok in rows:
         v = ("KILLED" if ok else "SURVIVED") if kind == "defect" else \
@@ -370,7 +396,7 @@ def cmd_self_test(args):
     if args.report:
         with open(args.report, "w", encoding="utf-8") as f:
             f.write("# 变异回归（阳性对照 + 修复对照）\n\n")
-            f.write(f"{killed}/{total} 个变体的行为符合预期。\n\n")
+            f.write(f"{killed}/{total} 个变体的行为符合预期。壁钟 {wall:.1f}s。\n\n")
             f.write("- **defect**（阳性对照）：注入已知缺陷，要求对应性质报出反例；"
                     "全部被杀死才说明性质集有效。\n")
             f.write("- **fix**（修复对照）：打入候选修复，要求当前报反例的性质转为通过。\n\n")

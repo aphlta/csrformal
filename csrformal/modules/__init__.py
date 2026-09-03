@@ -38,7 +38,7 @@ class Mutant:
     module: str
     desc: str
     patch: str                       # 替换用的 .scala 绝对路径
-    expect_kill: List[str] = field(default_factory=list)   # pid 前缀（不含模块名）
+    expect_kill: List[str] = field(default_factory=list)   # pid 后缀精确匹配；族用 key[
     kind: str = "defect"
     expect_fix: List[str] = field(default_factory=list)
 
@@ -74,16 +74,16 @@ def _build() -> Dict[str, ModuleSpec]:
             Mutant("pc1", "CSRPermitModule",
                    "回滚 94a4b91a（= F1 的建议改法）：恢复 menvcfg.STCE 对 vstimecmp 的门控",
                    _mut("pc1_CSRPermitModule.scala"),
-                   kind="fix", expect_fix=["S3", "EQ"]),
+                   kind="fix", expect_fix=["S3", "EQ-permit"]),
             Mutant("m1", "CSRPermitModule",
                    "mcounteren.TM 不再门控 vstimecmp",
-                   _mut("m1_CSRPermitModule.scala"), ["S1b", "EQ"]),
+                   _mut("m1_CSRPermitModule.scala"), ["S1b", "EQ-permit"]),
             Mutant("m2", "CSRPermitModule",
                    "去掉 HU 态的 scounteren 检查",
                    _mut("m2_CSRPermitModule.scala"), ["C2"]),
             Mutant("m3", "CSRPermitModule",
                    "去掉 hstateen 对 sstateen 的门控",
-                   _mut("m3_CSRPermitModule.scala"), ["E3", "EQ"]),
+                   _mut("m3_CSRPermitModule.scala"), ["E3", "EQ-permit"]),
             Mutant("m4", "CSRPermitModule",
                    "VS 计数器门控误用 scounteren 而非 hcounteren",
                    _mut("m4_CSRPermitModule.scala"), ["C3"]),
@@ -115,6 +115,7 @@ def _build() -> Dict[str, ModuleSpec]:
         sources={"TrapEntryMEventModule": os.path.join(events, "TrapEntryMEvent.scala")},
         doc="陷入 M 后各 CSR 次态（EQ-next：SIE 族；EQ-tval：tval2/GVA；EQ-tval-data：精确 xtval）",
         mutants=[
+            # EQ-tval 必须精确匹配：startswith("EQ-tval") 会误吃 EQ-tval-data。
             Mutant("te1", "TrapEntryMEventModule",
                    "LS guest-page-fault 的 tval2 误用 trapPcGPA 而非 memGPA",
                    _mut("te1_TrapEntryMEvent.scala"), ["EQ-tval"]),

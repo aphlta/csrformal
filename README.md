@@ -176,16 +176,17 @@ demo 的第三步把这些性质拿去重跑当前 RTL，`CSRPermit/S3` 与 EQ �
 ./bin/csrformal self-test --report out/reports/self-test.md
 ```
 
-13 个变体。前 10 个约 77 s、行为符合预期；`te1`/`te2`/`tehs1` 独立验证
-（每个变体要单独 scalac 覆盖编译 + 重新精化）。`tehs1` 只改 HS 路径，
-没有它则 TrapEntryHS 三条 EQ 全绿不可信：
+13 个变体。2026-09-03 本机完整跑 **13/13** 符合预期（壁钟 114.7s）。
+`te1` 只对 `EQ-tval`，`te2` 只对 `EQ-tval-data`（精确匹配，不再
+`startswith` 串台）。`tehs1` 只改 HS 路径，没有它则 TrapEntryHS 三条 EQ
+全绿不可信：
 
 | 变体 | 类型 | 内容 | 结果 |
 |---|---|---|---|
-| `pc1` | fix | 回滚 `94a4b91a`：恢复 `menvcfg.STCE` 对 `vstimecmp` 的门控 | FIXED（`CSRPermit/S3`、`S3b` 转为通过） |
-| `m1` | defect | `mcounteren.TM` 不再门控 `vstimecmp` | KILLED by `S1b` |
+| `pc1` | fix | 回滚 `94a4b91a`：恢复 `menvcfg.STCE` 对 `vstimecmp` 的门控 | FIXED（`CSRPermit/S3` + `EQ-permit`） |
+| `m1` | defect | `mcounteren.TM` 不再门控 `vstimecmp` | KILLED by `S1b` + `EQ-permit` |
 | `m2` | defect | 去掉 HU 态的 `scounteren` 检查 | KILLED by `C2` ×5 |
-| `m3` | defect | 去掉 `hstateen` 对 `sstateen` 的门控 | KILLED by `E3` ×4（EQ 已挂 expect_kill，与 SE 规格重叠） |
+| `m3` | defect | 去掉 `hstateen` 对 `sstateen` 的门控 | KILLED by `E3` 族 + `EQ-permit`（与 SE 规格重叠） |
 | `m4` | defect | VS 计数器门控误用 `scounteren` 而非 `hcounteren` | KILLED by `C3` ×5 |
 | `t1` | defect | `hsEXVec` 忽略 `medeleg` | KILLED by `D2`/`D5` ×36 |
 | `t2` | defect | `vsEXVec` 忽略 `hedeleg` | KILLED by `D4` ×18 |
@@ -323,7 +324,8 @@ print(sorted(c.ins)); print(sorted(c.outs)); print('regs',len(c.regs))
    同时登记变异体。没有阳性对照，新模块的「全部通过」不可信。
 
 变异体的做法：把 `XiangShan/.../<Module>.scala` 拷进 `mutants-src/<id>_<Module>.scala`，
-改一处逻辑，在 `ModuleSpec.mutants` 里写清 `expect_kill`（应当抓住它的性质 pid 前缀）。
+改一处逻辑，在 `ModuleSpec.mutants` 里写清 `expect_kill`（pid 后缀精确匹配；
+   带下标的族用 `D2` 匹配 `D2[...]`。`EQ-tval` 不会吃到 `EQ-tval-data`）。
 
 ## 已知限制
 
